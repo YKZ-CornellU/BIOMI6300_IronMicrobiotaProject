@@ -1,0 +1,37 @@
+# R session files
+.Rhistory
+.RData
+.Ruserdata
+
+# RStudio project files
+.Rproj.user/
+*.Rproj
+
+# Temporary / backup files
+*.swp
+*~
+*.bak
+
+# Large sequencing data and other big files
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.bam
+*.sam
+*.vcf
+*.vcf.gz
+
+# Compressed archives (often large)
+*.tar
+*.tar.gz
+*.zip
+*.7z
+
+# Results that can be regenerated
+results/
+tmp/
+cache/
+
+# Logs
+*.log
