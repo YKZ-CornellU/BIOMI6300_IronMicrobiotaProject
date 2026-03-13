@@ -1,0 +1,46 @@
+---
+title: "00_FastQC"
+output: html_document
+author: "Yuan Karina Zhang"
+date: "2026-03-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(238428)
+```
+
+```{r load packages}
+pacman::p_load(tidyverse, dada2, phyloseq, patchwork, 
+               DT, devtools, Biostrings, ShortRead,
+               install = FALSE)
+```
+
+```{r setup raw seq path}
+raw_fastqs_path <- "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Raw_seq"
+raw_fastqs_path
+
+head(list.files(raw_fastqs_path))
+length(list.files(raw_fastqs_path))
+```
+
+```{r create vector for forward and reverse reads}
+# Create vector of forward reads
+forward_reads <- list.files(raw_fastqs_path, pattern = "_1.fastq.gz", full.names = TRUE)
+
+# Intuition Checks 
+head(forward_reads)
+
+# Intuition check #2: We should have fewer reads in the forward vector than in total 
+stopifnot(length(forward_reads) < length(list.files(raw_fastqs_path)))
+
+# Create a vector of reverse reads 
+reverse_reads <- list.files(raw_fastqs_path, pattern = "2.fastq.gz", full.names = TRUE)
+
+# Intuition Checks
+head(reverse_reads)
+
+# Intuition check #2: Need to have equal number of forward and reverse files 
+stopifnot(length(reverse_reads) == length(forward_reads))
+```
+
