@@ -1,0 +1,488 @@
+---
+title: "02_AssignASVs"
+output: html_document
+date: "2026-04-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+set.seed(238428)
+n_threads = 64
+start_time <- Sys.time()
+
+pacman::p_load(tidyverse, devtools, dada2, phyloseq, 
+               patchwork, DT, install = FALSE)
+```
+
+```{r load data and rename files}
+
+filtered_fastqs_path <- "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Raw_seq/01_trimmingfiltering"
+filtered_fastqs_path
+
+filtered_forward_reads <- 
+  list.files(filtered_fastqs_path, pattern = "R1_filtered.fastq.gz",
+             full.names = TRUE)
+filtered_forward_reads[1:5]
+
+
+filtered_reverse_reads <- 
+    list.files(filtered_fastqs_path, pattern = "R2_filtered.fastq.gz",
+             full.names = TRUE)
+filtered_reverse_reads[1:5]
+
+sample_names <- sapply(strsplit(basename(filtered_forward_reads), "_"), `[`,1) 
+head(sample_names)
+```
+
+```{r error reads}
+# Forward Reads 
+error_forward_reads <- 
+  learnErrors(filtered_forward_reads, multithread = n_threads)
+
+# Forward Error Plot 
+forward_error_plot <- 
+  plotErrors(error_forward_reads, nominalQ = TRUE) + 
+  labs(title = "Forward Reads: Error Model")
+
+# Reverse Reads 
+error_reverse_reads <- 
+  learnErrors(filtered_reverse_reads, multithread = n_threads)
+
+# Reverse Error Plot 
+reverse_error_plot <- 
+  plotErrors(error_reverse_reads, nominalQ = TRUE) + 
+  labs(title = "Reverse Reads: Error Model")
+
+# Look at the plots together 
+forward_error_plot + reverse_error_plot
+```
+
+
+```{r Infer ASVs - Forward Reads}
+
+# Infer ASVs on the forward sequences
+dada_forward <- 
+  dada(filtered_forward_reads, 
+       err = error_forward_reads,
+       multithread = n_threads) 
+
+typeof(dada_forward) # It's a list 
+length(dada_forward) # 102 total?
+dada_forward$`20210602-MA-CES1F_R1_filtered.fastq.gz`
+```
+
+```{r Infer ASVs - Reverse Reads}
+dada_reverse <- 
+  dada(filtered_reverse_reads,
+       err = error_reverse_reads ,
+       multithread = n_threads)
+
+dada_reverse[30]
+length(dada_reverse) # 102 total?
+
+```
+
+```{r Merge Forward and Reverse ASVs}
+merged_ASVs <- 
+  mergePairs(dada_forward, filtered_forward_reads,
+             dada_reverse, filtered_reverse_reads,
+             verbose = TRUE)
+
+
+typeof(merged_ASVs) # A list
+
+length(merged_ASVs)
+
+head(names(merged_ASVs))
+
+glimpse(merged_ASVs$`20210602-MA-CEB1W_R1_filtered.fastq.gz`)
+```
+
+```{r Create Raw ASV Count Table}
+raw_ASV_table <- makeSequenceTable(merged_ASVs)
+
+# Intuition Check: Type and dimensions of the data
+dim(raw_ASV_table)
+typeof(raw_ASV_table)
+write.table(raw_ASV_table, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/02_AssignASVs/raw_ASV_counts.tsv",
+            sep = "\t", quote = FALSE, col.names = NA)
+```
+
+```{r Assess ASV Quality}
+# ASV length
+maxLength_ASV <- max(nchar(getSequences(raw_ASV_table)))
+minLength_ASV <- min(nchar(getSequences(raw_ASV_table))) 
+meanLength_ASV <- mean(nchar(getSequences(raw_ASV_table))) 
+meanLength_ASV
+medianLength_ASV <- median(nchar(getSequences(raw_ASV_table))) 
+medianLength_ASV
+
+# Create a table to Inspect the distribution of sequence lengths of all ASVs in dataset 
+table(nchar(getSequences(raw_ASV_table)))
+
+# Inspect the distribution of sequence lengths of all ASVs in data set 
+# AFTER TRIM
+plot_ASVLength_raw <- 
+  data.frame(Seq_Length = nchar(getSequences(raw_ASV_table))) %>%
+  ggplot(aes(x = Seq_Length )) + 
+  geom_histogram() + 
+  # include the x-axis scales
+  scale_x_continuous(limits = c(0, maxLength_ASV + 5)) + 
+  labs(y = "Number of ASVs", x = "Raw ASV Length (bps)")
+
+# Show the plot
+plot_ASVLength_raw
+```
+# Interpretation 1: 
+This project used 16s rRNA seuqencing with MiSeq250, targeting the V5-V6 region using primer sets: P609D 5′-GGMTTAGATACCCBDGTA- 3′ and P699R 5′-GGGTYKCGCTCGTTR- 3'. Based on these information, estimated ASV bp length was estimated using the webtool SILVA testprobe function. The reverse primer target the 1099bp position on E.Coli's gene, and the forward primer target at position 784. Thus, the anticipated sequenced length with this primer is 315bps, without the primers, the inserts will be 282 bps. During the trimming and turnication, only primer legnths were cut (33bps), and truncation further removed 2bps on the forward end and 15 bps on the reverse tail, thus, a total of 450bps in R1R2 after trimming. The insert size of 282bps indicated there is sufficient overlapped region (60% of total insert) and I can recover the whole insert of 282 bp in merged ASV. 
+
+# Interpretation 2: 
+The observed mean/median merge ASV length is 295bps, which is 13 bps longer than our expectation, suggesting that the expected amplicon length based on nominal E. coli primer coordinates may be underestimating the true amplified region or it's possible that taxon-specific length variation was present here. Or, it can be insufficient trimming of primers, for which I went back to the fastqc rmd and redid the primer serach in filtered reads and found the sequences were clean indeed, with the following statements seen: 
+
+[1] "Forward primer remains in 0 % of filtered forward sequences"
+[1] "Reverse primer remains in 0 % of filtered reverse sequences"
+
+Thus, given the fact that the insert size was estimated in SILVA testprobe, the dataset is suggesting the real insert size is ~295bps.
+
+# Interpretation 3: 
+I suggest trim around 290-300 bp length given the range seen, i will not use fixed bp size as th length variation within a region is expected and can be biologically meaningful. If fix at mean size of 295bps, i would only retain 1% of the dataset, which is not feasible. 
+
+```{r Trim ASV lengths}
+# Subset only ASVs that are 295 bps long 
+raw_ASV_table_trimmed <- 
+  raw_ASV_table[, nchar(colnames(raw_ASV_table)) >= 290 &
+                    nchar(colnames(raw_ASV_table)) <= 300]
+
+# Inspect the distribution of sequence lengths of all ASVs in dataset 
+table(nchar(getSequences(raw_ASV_table_trimmed)))
+
+# What proportion of total ASV sequences are left in the data? 
+percRetained_Trimmed <- sum(raw_ASV_table_trimmed)/sum(raw_ASV_table)
+percRetained_Trimmed
+```
+
+```{r POst-trimming inspection}
+plot_ASVLength_trimmed <- 
+  data.frame(Seq_Length = nchar(getSequences(raw_ASV_table_trimmed))) %>%
+  ggplot(aes(x = Seq_Length )) + 
+  geom_histogram() + 
+  # include the x-axis scales
+  scale_x_continuous(limits = c(0, maxLength_ASV + 5)) + 
+  labs(y = "Number of ASVs", x = "Trimmed ASV Length (bps)")
+
+# Show the plot 
+plot_ASVLength_trimmed
+```
+
+```{r Remove Chimeras}
+# Remove the chimeras in the raw ASV table
+noChimeras_ASV_table <- 
+  removeBimeraDenovo(raw_ASV_table_trimmed, 
+                     method="consensus", 
+                     multithread = n_threads, 
+                     verbose=TRUE)
+
+dim(noChimeras_ASV_table)
+
+# What proportion is left of the sequences? 
+# Chimera removal compared to trimming 
+percRetained_chimerasTrimmed <- sum(noChimeras_ASV_table)/sum(raw_ASV_table_trimmed)
+percRetained_chimerasTrimmed
+# Chimera removal compared to raw  
+percRetained_chimerasRaw <-sum(noChimeras_ASV_table)/sum(raw_ASV_table)
+percRetained_chimerasRaw
+
+# Plot it 
+plot_ASVLength_NoChimeras <- 
+  data.frame(Seq_Length_NoChim = nchar(getSequences(noChimeras_ASV_table))) %>%
+  ggplot(aes(x = Seq_Length_NoChim )) + 
+  geom_histogram()+ 
+  # include the x-axis scales
+  scale_x_continuous(limits = c(0, maxLength_ASV + 5)) + 
+  labs(y = "Number of ASVs \n (Post-Chimera Removal)", 
+       x = "ASV Length (bps)")
+
+# Show the plot
+plot_ASVLength_NoChimeras 
+```
+
+# Interpretation 4: 
+Chimera removal identified a large proportion of sequence variants (~84%) as bimeric; however, these were  low-abundance ASVs. Approximately 73% of total reads were retained after chimera removal, indicating that the majority of sequence abundance was preserved and suggesting effective removal of spurious variants without substantial loss of biological signal.
+
+
+```{r}
+plot_ASVLength_raw + plot_ASVLength_trimmed + plot_ASVLength_NoChimeras + 
+    plot_annotation(tag_levels = 'A')
+```
+```{r Track the read counts}
+# A little function to identify number seqs 
+getN <- function(x) sum(getUniques(x))
+
+# Make the table to track the seqs 
+track <- cbind(sapply(dada_forward, getN),
+               sapply(dada_reverse, getN),
+               sapply(merged_ASVs, getN),
+               rowSums(noChimeras_ASV_table))
+
+head(track)
+
+# Update column names to be more informative (most are missing at the moment!)
+colnames(track) <- c("denoisedF", "denoisedR", "merged", "nochim")
+rownames(track) <- row.names(noChimeras_ASV_table)
+
+# Generate a dataframe to track the reads through our DADA2 pipeline
+track_counts_df <- 
+  track %>%
+  # make it a dataframe
+  as.data.frame() %>%
+  rownames_to_column(var = "sample_names")
+
+# Now let's add a column for the number of ASVs
+# First, intuition check that the samples match 
+stopifnot(track_counts_df$sample_names == row.names(noChimeras_ASV_table))
+
+# Now, let's add a new column with the number of ASVs
+track_counts_df <- 
+  track_counts_df %>%
+  mutate(num_ASVs = rowSums(noChimeras_ASV_table > 1))
+
+# Visualize it in table format 
+DT::datatable(track_counts_df)
+
+# Plot it!
+track_counts_df %>%
+  pivot_longer(denoisedF:nochim, names_to = "read_type", values_to = "num_reads") %>%
+  mutate(read_type = fct_relevel(read_type, "denoisedF", "denoisedR", "merged", "nochim")) %>%
+  ggplot(aes(x = read_type, y = num_reads, fill = read_type)) + 
+  geom_line(aes(group = sample_names), color = "grey") + 
+  geom_point(shape = 21, size = 3, alpha = 0.8) + 
+  scale_fill_brewer(palette = "Spectral") + 
+  labs(x = "Filtering Step", y = "Number of Sequences") + 
+  theme_bw()
+```
+
+```{r Plot the number of sequences that have been maintained}
+plot_ReadDepth <- 
+  track_counts_df %>%
+  ggplot(aes(x = nochim)) + 
+  geom_histogram() + 
+  labs(x = "Total # of Sequences", y = "# of Samples") + 
+  theme_bw()
+
+# What is the ASV richness per sample? 
+plot_ASVRichness <- 
+  track_counts_df %>%
+  ggplot(aes(x = num_ASVs)) + 
+  geom_histogram() + 
+  labs(x = "Total # of ASVs", y = "# of Samples") + 
+  theme_bw()
+
+# Now, let's look at the relationship of ASVs and Sequencing depth 
+plot_ReadDepth_ASVRichness <- 
+  track_counts_df %>%
+  ggplot(aes(x = nochim, y = num_ASVs)) + 
+  geom_point() + 
+  labs(x = "Total # of Sequences", y = "# of ASVs") + 
+  theme_bw()
+
+# Show the plots together 
+plot_ReadDepth + plot_ASVRichness + plot_ReadDepth_ASVRichness + 
+    plot_annotation(tag_levels = 'A')
+```
+# Interpretation 5:
+Sequencing depth across samples ranged from approximately 20,000 to 60,000 reads, with most samples clustering between 30,000 and 45,000 reads, so there is likely sufficient coverage for downstream analysis. ASV richness plot showed that the majority of samples containing between 100 and 150 ASVs, suggesting moderate microbial diversity and consistent denoising performance. A weak positive relationship between sequencing depth and ASV richness was observed. These results suggest the suitability of the dataset for downstream analyses, although appropriate normalization/rarefraction shall be applied to account for variation in sequencing depth.
+
+```{r Assign taxa}
+# Assign up to genus level 
+taxa_train <- 
+  assignTaxonomy(noChimeras_ASV_table, 
+                 refFasta = "/workdir/in_class_data/taxonomy/silva_nr99_v138.2_toGenus_trainset.fa.gz", 
+                 multithread = n_threads)
+
+# Add the genus/species information 
+taxa_addSpecies <- 
+  addSpecies(taxa_train, 
+              refFasta = "/workdir/in_class_data/taxonomy/silva_v138.2_assignSpecies.fa.gz")
+
+# Inspect the taxonomy 
+glimpse(taxa_addSpecies)
+
+# Let's removing the ASV sequence rownames for display only
+taxa_print <- taxa_addSpecies 
+rownames(taxa_print) <- NULL
+head(taxa_print)
+```
+
+```{r Check the structure of ASV table}
+# we need to transpose the matrix 
+final_ASV_table_withSeqs <- t(noChimeras_ASV_table)
+# Intuition check
+head(rownames(final_ASV_table_withSeqs)) # ASV Sequences
+head(colnames(final_ASV_table_withSeqs))
+```
+
+
+```{r Names in ASV table}
+head(sample_names)
+head(colnames(final_ASV_table_withSeqs)) # Sample names
+head(sapply(strsplit(colnames(final_ASV_table_withSeqs), "_"), `[`,1)) # Looks good! 
+
+# Now, add a break in the script break if this isn't true! 
+# Let's make sure the sample names match the file names in the matrix.
+stopifnot(sapply(strsplit(colnames(final_ASV_table_withSeqs), "_"), `[`,1) == sample_names)
+
+# Now, we've done some checks to prove to ourselves there will be no silent errors, 
+# Let's rename! 
+colnames(final_ASV_table_withSeqs) <- sample_names
+head(colnames(final_ASV_table_withSeqs))
+
+# Give headers more manageable names
+# First pull the ASV sequences from the rownames
+ASV_seqs <- rownames(final_ASV_table_withSeqs)
+ASV_seqs[1:5]
+
+# How many ASVs? 
+num_ASVs <- dim(final_ASV_table_withSeqs)[1] # select the number of rows
+num_ASVs 
+
+# Make an empty vector the length of the number of ASVs, 
+# which is where we will place the new operational ASV names 
+ASV_headers <- vector(num_ASVs, mode = "character")
+
+# Let's mae sure we have an empty vector!
+ASV_headers[1:5]
+
+length(ASV_headers) 
+```
+
+
+```{r create a vector with ASV numbers}
+# loop through vector and fill it in with ASV names 
+for (i in 1:num_ASVs) {
+  # Add leading zero to ASV name so they print in correct order.
+  ASV_number <- sprintf("%04d", i)
+  # Now, rename each spot in the ASV header vector as we loop through the for loop
+  ASV_headers[i] <- paste(">ASV", ASV_number, sep = "_")
+}
+
+# Intuition check
+ASV_headers[1:5]
+
+# Create a new ASV table, which will have the ASV numbers as names 
+# View(noChimeras_ASV_table) # To view the table
+final_ASV_table <- final_ASV_table_withSeqs
+glimpse(final_ASV_table)
+
+## Replace the ASV seqs with the ASV numbers 
+row.names(final_ASV_table) <- sub(">", "", ASV_headers)
+final_ASV_table[1:5, 1:5]
+
+# 1. Write count table with ASV sequence names
+write.table(final_ASV_table_withSeqs, 
+            file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/02_AssignASVs/ASV_table_withSeqNames.tsv", 
+            sep = "\t", quote = FALSE, col.names = NA)
+
+# 2. Write count table with ASV numbered names (e.g. ASV_1, ASV_2, etc)
+write.table(final_ASV_table, 
+            file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/02_AssignASVs/ASV_table.tsv", 
+            sep = "\t", quote = FALSE, col.names = NA)
+
+# Combine in a fasta format with the cbind() function
+ASV_fasta <- c(rbind(ASV_headers, ASV_seqs))
+head(ASV_fasta, n = 4)
+
+# Then, let's write it to a fasta file!
+# This will be our reference later on for which seq matches which ASV
+write(ASV_fasta, "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/02_AssignASVs/ASVs.fasta")
+```
+
+
+```{r Taxonomy Table}
+dim(taxa_addSpecies)
+colnames(taxa_addSpecies)
+head(rownames(taxa_addSpecies), n = 2)
+class(taxa_addSpecies)
+
+
+##### Prepare tax table 
+# 1. Add the ASV sequences from the rownames to a column 
+new_tax_table <- 
+  taxa_addSpecies%>%
+  as.data.frame() %>%
+  rownames_to_column(var = "ASVseqs") 
+
+# Intuition check 
+glimpse(new_tax_table)
+
+# IMPORTANT! Let's do our intuition check 
+# This is where we ensure we don't mix up the ASV names!
+stopifnot(new_tax_table$ASVseqs == rownames(final_ASV_table_withSeqs))
+
+# Now let's add the ASV names 
+rownames(new_tax_table) <- rownames(final_ASV_table)
+head(new_tax_table)
+```
+
+```{r Final prep of tax table. Add new column with ASV names }
+ASV_tax_table <- 
+  new_tax_table %>%
+  # add rownames from count table for phyloseq handoff
+  mutate(ASV = rownames(final_ASV_table)) %>%
+  # Reorder the columns
+  dplyr::select(Kingdom, Phylum, Class, Order, Family, Genus, Species, ASV, ASVseqs)
+
+# Assign the rownames, which is required by phyloseq
+rownames(ASV_tax_table) <- ASV_tax_table$ASV
+
+# Take a quick look
+glimpse(ASV_tax_table)
+
+# Intution check
+stopifnot(ASV_tax_table$ASV == rownames(ASV_tax_table), 
+          rownames(ASV_tax_table) == rownames(ASV_tax_table))
+
+# Write the table 
+write.table(ASV_tax_table, 
+            file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/02_AssignASVs/ASV_taxonomy.tsv", 
+            sep = "\t", quote = FALSE, col.names = NA)
+```
+
+```{r DADA2 sample data}
+# And save the track_counts_df a R object, which we will merge with metadata information in the next step of the analysis in nalysis/02_Taxonomic_Assignment. 
+save(track_counts_df, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/02_AssignASVs/track_read_counts.RData")
+```
+
+```{r Metadata}
+metadata_physeq <- read.csv("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/metadata.csv")
+```
+
+
+```{r Phyloseq S4 Object Creation}
+# Construct the phyloseq object 
+raw_physeq <- phyloseq(otu_table(final_ASV_table, taxa_are_rows = TRUE),
+                       # The taxonomy table needs to first be converted into a matrix
+                       tax_table(as.matrix(ASV_tax_table)), 
+                       # Next, add the sample_data
+                       metadata_physeq)
+
+# Check the phyloseq object!
+raw_physeq
+
+# Now, save the phyloseq object, but use the correct path to your folder:
+save(raw_physeq, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/02_AssignASVs/raw_physeq.RData")
+```
+
+```{r End}
+# Take the time now that we are at the end of the script
+end_time <- Sys.time()
+end_time 
+
+# Echo the elapsed time
+elapsed_time <- round((end_time - start_time), 3)
+elapsed_time
+
+# Ensure reproducibility with package version information
+devtools::session_info()
+```
+

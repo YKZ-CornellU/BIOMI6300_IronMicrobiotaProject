@@ -301,6 +301,38 @@ preQC_aggregate_plot / postQC_aggregate_plot
 # Interpretation of comparison plot: 
 Overall, the pre-QC plots indicated good sequencing quality although we saw a declining trend toward the ends of reads, particularly in reverse reads. After trimming and filtering, the post-QC plots showed improved consistency in per-base quality, indicating that low-quality tail regions were effectively removed while preserving most high-quality sequence data. Because approximately 88% of reads were retained, which is acceptable, and I think the QC process at this point has successfully and appropriately cleaned sequences for downstream DADA2 analysis.
 
+```{r Re-check for primers in filtered forward reads}
+all_f_hits <- c()
+
+for (f in filtered_forward_reads) {
+  fq <- readFastq(f)
+  seqs <- sread(fq)
+  
+  hits <- vcountPattern("GGMTTAGATACCCBDGTA", seqs, fixed = FALSE)
+  all_f_hits <- c(all_f_hits, hits > 0)
+}
+
+paste("Forward primer remains in",
+      round(mean(all_f_hits) * 100, 2),
+      "% of filtered forward sequences")
+
+```
+
+```{r Re-check for primers in filtered reverse reads}
+all_r_hits <- c()
+
+for (r in filtered_reverse_reads) {
+  fq <- readFastq(r)
+  seqs <- sread(fq)
+  
+  hits <- vcountPattern("GGGTYKCGCTCGTTR", seqs, fixed = FALSE)
+  all_r_hits <- c(all_r_hits, hits > 0)
+}
+
+paste("Reverse primer remains in",
+      round(mean(all_r_hits) * 100, 2),
+      "% of filtered reverse sequences")
+```
 
 ```{r closing up}
 # Ensure reproducibility 
