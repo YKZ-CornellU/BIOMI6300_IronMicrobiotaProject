@@ -185,6 +185,8 @@ seqSums_df %>%
 
 preprocessed_physeq <- noChlorosMitos_physeq
 ```
+### Interpretation 5: 
+The minimum reads is 21454 which shall be good for 16s. The greatest read is in 60K which is ~3-fold greater than the minimal so rarefaction is recommended for downstream comparison. While the read depths for all samples are generally good, the sequencing depth slightly differed between treatment groups with the CRC groups getting more reads than the HC (healthy controls), which shall be considered when comparing diversity. But rarefactino will help with this when comparing differential abundances. The overall sequencing depth is good in general. 
 
 ```{r add a metadata column}
 # Let's add a metadata column to the file for this dataset

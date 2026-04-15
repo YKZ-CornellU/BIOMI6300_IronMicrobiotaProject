@@ -644,6 +644,18 @@ seqSums_df %&gt;%
 ## 101 SRR29920182     57765
 ## 102 SRR29920105     60561</code></pre>
 <pre class="r"><code>preprocessed_physeq &lt;- noChlorosMitos_physeq</code></pre>
+</div>
+<div id="interpretation-5" class="section level3">
+<h3>Interpretation 5:</h3>
+<p>The minimum reads is 21454 which shall be good for 16s. The greatest
+read is in 60K which is ~3-fold greater than the minimal so rarefaction
+is recommended for downstream comparison. While the read depths for all
+samples are generally good, the sequencing depth slightly differed
+between treatment groups with the CRC groups getting more reads than the
+HC (healthy controls), which shall be considered when comparing
+diversity. But rarefactino will help with this when comparing
+differential abundances. The overall sequencing depth is good in
+general.</p>
 <pre class="r"><code># Let&#39;s add a metadata column to the file for this dataset
 metadata_df &lt;- 
   preprocessed_physeq %&gt;%
@@ -709,11 +721,11 @@ save(preprocessed_physeq, file = &quot;/local/workdir/yz3272/BIOMI6300_IronMicro
 <pre class="r"><code># Take the time now that we are at the end of the script
 end_time &lt;- Sys.time()
 end_time</code></pre>
-<pre><code>## [1] &quot;2026-04-15 14:48:11 EDT&quot;</code></pre>
+<pre><code>## [1] &quot;2026-04-15 15:34:14 EDT&quot;</code></pre>
 <pre class="r"><code># Echo the elapsed time
 elapsed_time &lt;- round((end_time - start_time), 3)
 elapsed_time</code></pre>
-<pre><code>## Time difference of 12.992 secs</code></pre>
+<pre><code>## Time difference of 13.294 secs</code></pre>
 <pre class="r"><code># Ensure reproducibility with package version information
 devtools::session_info()</code></pre>
 <pre><code>## ─ Session info ───────────────────────────────────────────────────────────────
