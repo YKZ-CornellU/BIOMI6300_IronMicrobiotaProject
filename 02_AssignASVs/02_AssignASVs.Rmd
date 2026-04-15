@@ -454,24 +454,36 @@ save(track_counts_df, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProj
 ```
 
 ```{r Metadata}
-metadata_physeq <- read.csv("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/metadata.csv")
-```
+metadata_physeq <- read.delim(
+  "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/metadata.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
 
+head(metadata_physeq)
+colnames(metadata_physeq)
 
-```{r Phyloseq S4 Object Creation}
-# Construct the phyloseq object 
-raw_physeq <- phyloseq(otu_table(final_ASV_table, taxa_are_rows = TRUE),
-                       # The taxonomy table needs to first be converted into a matrix
-                       tax_table(as.matrix(ASV_tax_table)), 
-                       # Next, add the sample_data
-                       metadata_physeq)
+rownames(metadata_physeq) <- metadata_physeq[[1]]
+metadata_physeq <- metadata_physeq[, -1, drop = FALSE]
+
+metadata_physeq <- metadata_physeq[colnames(final_ASV_table), , drop = FALSE]
+
+all(rownames(metadata_physeq) == colnames(final_ASV_table))
+
+raw_physeq <- phyloseq(
+  otu_table(final_ASV_table, taxa_are_rows = TRUE),
+  tax_table(as.matrix(ASV_tax_table)),
+  sample_data(metadata_physeq)
+)
 
 # Check the phyloseq object!
 raw_physeq
 
 # Now, save the phyloseq object, but use the correct path to your folder:
 save(raw_physeq, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/02_AssignASVs/raw_physeq.RData")
+
 ```
+
 
 ```{r End}
 # Take the time now that we are at the end of the script

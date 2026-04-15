@@ -1,0 +1,260 @@
+---
+title: "Preprossessing data analysis for Iron and gut microbiome project data"
+output: html_document
+date: "2026-03-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.align = "center",
+                      # send any figure output to this folder 
+                      fig.path = "../figures/02_PreProcessing/")
+# Set the seed for reproducibility
+set.seed(238428)
+
+# What time did we start running this script? 
+start_time <- Sys.time()
+
+# Load packages 
+pacman::p_load(devtools, phyloseq, Biostrings, tidyverse, dada2, patchwork, install = FALSE)
+
+# Load the data 
+load("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/02_AssignASVs/raw_physeq.RData")
+
+# Look at the data 
+raw_physeq
+
+```
+
+```{r Clean up the data}
+# Let's see where chloroplasts are and also mitochondria
+
+# How to access what is in a phyloseq table
+view(tax_table(raw_physeq))
+view(otu_table(raw_physeq))
+
+# Make new physeq without chloroplasts
+noChloros_physeq <- 
+  raw_physeq %>% 
+  subset_taxa(Order != "Chloroplast" | is.na(Order))
+  
+# How many taxa were chloroplasts? 
+num_chloro_ASVs <- ntaxa(raw_physeq) - ntaxa(noChloros_physeq)
+num_chloro_ASVs
+
+# remove mitochondria 
+noChlorosMitos_physeq <- 
+  noChloros_physeq %>%
+  subset_taxa(Family != "Mitochondria" | is.na(Family))
+
+# How many mitochondrial ASVs? 
+num_mito_ASVs <- ntaxa(noChloros_physeq) - ntaxa(noChlorosMitos_physeq)
+num_mito_ASVs
+
+# Let's take a quick look 
+noChlorosMitos_physeq
+
+# How many total asvs were removed from chloros and mitos? 
+ntaxa(raw_physeq) - ntaxa(noChlorosMitos_physeq)
+
+# proportion of asvs kept? 
+ntaxa(noChlorosMitos_physeq)/ntaxa(raw_physeq)
+```
+
+### Interpretation 1: 
+In this project dataset, there are no chlorophyll and mitochondria ASV being detected. This is not superising, as they used a different primer set for V5-V6 which is less commonly applied for bacterial 16s sequencing. I think more generally/prevalently used primers might give higher detection rate of those contaminants, and the results seeing here is suggesting this dataset has good primer specificity with no host/dietary carryover.
+
+### Interpretation 2 and 3:
+This project dataset has no negative control and no mock community. It's harder to assess the accuracy of the sequencing, this is certainly a limitation in their microbial sequencing study design.
+
+
+```{r Reverse Complements}
+# Pull out Taxa Table
+tax_table <- 
+  noChlorosMitos_physeq %>%
+  tax_table() %>% 
+  data.frame()
+
+# Grab ASV Sequences and Names
+asv_names <- tax_table$ASV
+asv_seqs <- tax_table$ASVseqs
+
+# Create empty comparison matrix
+asv_rev_comp <- matrix(nrow=length(asv_seqs), ncol = length(asv_seqs)) 
+
+# Fix the names in the rows and columns 
+rownames(asv_rev_comp) <- asv_names
+colnames(asv_rev_comp) <- asv_names
+
+# Convert sequences to Biostrings
+asv_dna <- DNAStringSet(asv_seqs) 
+
+# Inspect 
+head(asv_dna)
+
+# Construct reverse complement
+asv_rev_dna <- reverseComplement(asv_dna) 
+
+# Now loop through every asv sequence to check 
+for(i in 1:length(asv_seqs)){ # For each asv sequence...
+  match_vec <- asv_dna[i] == asv_rev_dna # Compare it to the reverse complement of every other sequence...
+  asv_rev_comp[,i] <- match_vec # Write that logical vector as a new column 
+}
+
+# Find how many TRUEs (matches) we have, divide by 2 because each pair occurs twice
+cat("For", sum(asv_rev_comp) / 2,"ASVs, the reverse complement will need to be removed") 
+```
+### Interpretation 4: 
+This dataset do no have any reverse compliments to be removed. 
+
+```{r}
+# The current data object
+noChlorosMitos_physeq
+
+# Make a metadata_df for joining
+metadata_df <- 
+  noChlorosMitos_physeq %>%
+  sample_data() %>% 
+  data.frame()
+
+library(tibble)
+
+metadata_df <- metadata_df %>%
+  rownames_to_column(var = "names")
+
+# What is the library size/sequencing depth for each sample? 
+seqSums_df <- 
+  noChlorosMitos_physeq %>%
+  otu_table() %>%
+  # Sum each sample column 
+  colSums() %>%
+  data.frame() %>%
+  rownames_to_column(var = "names") %>%
+  left_join(., metadata_df, by = "names") 
+
+# Rename second column 
+colnames(seqSums_df)[2] <- "TotalSeqs"
+
+# check
+dim(seqSums_df)
+
+head(seqSums_df)
+```
+
+```{r}
+# Show the depth of samples 
+seqSums_df %>%
+  dplyr::select(names, TotalSeqs) %>%
+  arrange(TotalSeqs) %>%
+  head()
+
+numSeq_bar_plot <- 
+  seqSums_df %>%
+  ggplot(aes(x = reorder(names, TotalSeqs), y = TotalSeqs, fill = Group)) + 
+  geom_col() + 
+  theme(axis.text.x = element_blank()) + 
+  labs(y = "Read Depth", x = "Sample") + 
+  theme(legend.position = "none")
+
+numSeq_hist_plot <- 
+  seqSums_df %>%
+  ggplot(aes(x = TotalSeqs, fill = Group)) + 
+  geom_histogram(color = "black") + 
+  labs(y = "# of Samples", x = "Read Depth") + 
+  theme(legend.position = "bottom")
+
+numSeq_density_plot <- 
+  seqSums_df %>%
+  ggplot(aes(x = TotalSeqs, fill = Group)) +
+  geom_density(alpha = 0.5) + 
+  labs(x = "Read Depth") + 
+  theme(legend.position = "none")
+
+numSeq_bar_plot + numSeq_hist_plot + numSeq_density_plot + 
+  plot_annotation(tag_levels = "A")
+```
+```{r Remove sample with few reads}
+# What's the min seq depth? 
+min(sample_sums(noChlorosMitos_physeq))
+
+# Final check of the sequencing depth for now
+# Here, we could remove more samples if we needed to
+seqSums_df %>%
+  dplyr::select(names, TotalSeqs) %>%
+  arrange(TotalSeqs)
+
+preprocessed_physeq <- noChlorosMitos_physeq
+```
+
+```{r add a metadata column}
+# Let's add a metadata column to the file for this dataset
+metadata_df <- 
+  preprocessed_physeq %>%
+  sample_data() %>%
+  data.frame() %>%
+  rownames_to_column(var = "SampleID") %>%
+  mutate(
+    Iron_dose_mg = as.numeric(Iron.intake),
+    Group = factor(Group,
+                   levels = c("HC", "CRC"),
+                   ordered = TRUE),
+    Iron.intake = factor(Iron.intake,
+                         levels = c(50, 500),
+                         labels = c("Low iron", "High iron"),
+                         ordered = TRUE),
+    Group_Iron = factor(
+      paste(Group, Iron.intake, sep = "_"),
+      levels = c("HC_Low iron", "HC_High iron",
+                 "CRC_Low iron", "CRC_High iron"),
+      ordered = TRUE
+    ),
+    ID = factor(ID, ordered = TRUE)
+  )
+
+### Let's add the sequencing count data, so that doesn't get lost! 
+# What are the sample size distributions?# Per-sample sequencing depth
+num_seqs_df <- 
+  preprocessed_physeq %>%
+  sample_sums() %>%
+  data.frame() %>%
+  rownames_to_column(var = "SampleID")
+
+colnames(num_seqs_df)[2] <- "Sequencing_Depth"
+
+# Merge sequencing depth into metadata
+metadata_df2 <- 
+  metadata_df %>%
+  left_join(num_seqs_df, by = "SampleID")
+
+## Check they match
+stopifnot(metadata_df$SampleID == metadata_df2$SampleID)
+
+# Rename the rows 
+rownames(metadata_df2) <- metadata_df2$SampleID
+
+# Reassign to the phyloseq object, rewriting the old metadata 
+sample_datapreprocessed_physeq <- metadata_df2
+
+# Double check
+colnames(data.frame(sample_data(preprocessed_physeq)))
+
+# Intuition check 
+head(num_seqs_df)
+```
+```{r save data}
+# Please be sure to use the correct path to the appropriate directory in your file system
+save(preprocessed_physeq, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/03_Pre-processing/preprocessed_phyloseq.RData")
+```
+
+```{r Ending}
+# Take the time now that we are at the end of the script
+end_time <- Sys.time()
+end_time
+
+# Echo the elapsed time
+elapsed_time <- round((end_time - start_time), 3)
+elapsed_time
+
+# Ensure reproducibility with package version information
+devtools::session_info()
+```
