@@ -1,20 +1,305 @@
 ---
-title: "Beta-Diversity"
+title: "04_Biodiversity"
 output: html_document
-date: "2026-04-15"
+Author: "Karina Zhang"
+date: "2026-04-16"
 ---
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+start_time <- Sys.time()
+set.seed(238428)
 ```
 
-# Inputs:
-- preprocessed_physeq: asv, count table, metadata, taxonomy
-
-# Outputs
-- visualize data in ordinations (PCoA or NMDs)
--Calculate stats (PERMANOVA and betadisper)
 
 ```{r Load data and packages}
+pacman::p_load(tidyverse, devtools, patchwork, iNEXT, phyloseq, ggpubr, rstatix,
+               install = FALSE)
+
+# Load colors and shapes
+source("/local/workdir/yz3272/Biodiversity_Salinity_16S/code/colors_and_shapes.R")
+source("/local/workdir/yz3272/Biodiversity_Salinity_16S/code/functions.R")
+
+#load data
+load("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/03_Pre-processing/preprocessed_phyloseq.RData")
+preprocessed_physeq
+
+# Intuition check on seq depth
+min(sample_sums(preprocessed_physeq))
+```
+
+```{r Create metadata_df}
+metadata_df <- 
+  preprocessed_physeq %>%
+  sample_data() %>%
+  data.frame()
+metadata_df
+```
+
+```{r Create iNEXT input}
+# Species in rows, samples in columns
+iNEXT_input_df <- 
+  preprocessed_physeq %>%
+  otu_table() %>%
+  data.frame()
+
+# Inspect
+dim(iNEXT_input_df)
+
+# Run iNEXT
+#iNEXT_data <- iNEXT(
+#  iNEXT_input_df,
+#  q = c(0, 1, 2),
+#  datatype = "abundance")
+
+#save(iNEXT_data, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/04_Biodiversity/iNEXT_data.RData")
+
+load("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/04_Biodiversity/iNEXT_data.RData")
+
+# Inspect 
+str(iNEXT_data)
 
 ```
+
+```{r}
+# Species in rows and pooled Group-Iron categories in columns 
+  iNEXT_input_df %>%
+  colnames() %>%
+  data.frame()
+
+group_iron_colors <- c(
+  "CRC-500" = "#d95f02",
+  "CRC-50"  = "#66c2a5",
+  "HC-500"  = "#fc8d62",
+  "HC-50"   = "#1b9e77"
+)
+
+color_df <- 
+  iNEXT_input_df %>%
+  colnames() %>%
+  data.frame()
+
+colnames(color_df)[1] <- "names"
+
+iNEXT_color_df <- 
+  color_df %>%
+  mutate(
+    names = gsub("\\.", "-", names),
+    names = gsub("^X", "", names)
+  ) %>%
+  left_join(
+    metadata_df %>%
+      tibble::rownames_to_column("names") %>%
+      mutate(
+        names = gsub("\\.", "-", names),
+        names = gsub("^X", "", names),
+        group_iron = paste(Group, Iron.intake, sep = "-")
+      ),
+    by = "names"
+  ) %>%
+  left_join(
+    data.frame(
+      group_iron = names(group_iron_colors),
+      plot_color = unname(group_iron_colors)
+    ),
+    by = "group_iron"
+  )
+```
+
+```{r Rarefaction Curves}
+ggiNEXT(iNEXT_data, type = 1, facet.var = "Order.q") + 
+  scale_color_manual(values = iNEXT_color_df$plot_color) + 
+  scale_fill_manual(values = iNEXT_color_df$plot_color) + 
+  theme_bw() + 
+  theme(legend.position = "none") + 
+  labs(y = "Effective Number of ASVs", x = "Number of Sequences")
+```
+
+
+```{r Manual Rarefaction Curves}
+str(iNEXT_data)
+
+iNEXT_manual_df <- 
+  iNEXT_data$iNextEst$size_based %>%
+  dplyr::rename(names = Assemblage) %>%
+  mutate(
+    names = gsub("\\.", "-", names),
+    names = gsub("^X", "", names)
+  ) %>%
+  left_join(
+    metadata_df %>%
+      tibble::rownames_to_column("names") %>%
+      mutate(
+        names = gsub("\\.", "-", names),
+        names = gsub("^X", "", names),
+        group_iron = paste(Group, Iron.intake, sep = "-")
+      ),
+    by = "names"
+  )
+
+dim(iNEXT_manual_df)
+
+iNEXT_manual_df %>%
+  dplyr::filter(Method == "Rarefaction") %>%
+  ggplot(aes(x = m, y = qD, color = group_iron, group = names)) + 
+  geom_line() + 
+  facet_grid(Order.q ~ group_iron, scales = "free") + 
+  scale_color_manual(values = group_iron_colors) + 
+  theme_bw() + 
+  labs(y = "Effective Number of ASVs", x = "Number of Sequences") + 
+  theme(legend.position = "bottom")
+
+```
+
+### INTERPRETATION 1: 
+Both the ggiNEXT and manual rarefaction plots indicate that the sequencing depth here was sufficient. As both figures have most curves rise rapidly at low sequencing depth and then level off, suggesting that samples were sequenced deeply enough to characterize the ASVs. In general, I think it's valid to make conclusions about richness at q=0, q=1, and q=2, although the platueing is more prominant in q=1 and q=2, while in richness along q=0, mild uptrend reamin observed.
+
+Until this point, I processed all the data in this study. However, starting from alpha diversity, i will only focus on the healthy control mice with 2 iron intake groups, just due to the fact I am only interested in the healthy mice, and do not wish to reproduce their data completely. 
+
+
+```{r}
+#create a seperate df for healthy mice only
+alpha_df <- 
+  iNEXT_data$AsyEst %>%
+  dplyr::rename(names = Assemblage) %>%
+  mutate(
+    names = gsub("\\.", "-", names),
+    names = gsub("^X", "", names)
+  ) %>%
+  left_join(
+    metadata_df %>%
+      tibble::rownames_to_column("names") %>%
+      mutate(
+        names = gsub("\\.", "-", names),
+        names = gsub("^X", "", names)
+      ),
+    by = "names"
+  )
+
+healthy_df <- alpha_df %>%
+  dplyr::filter(Group == "HC", Diversity == "Species richness")
+
+healthy_shannon_df <- alpha_df %>%
+  dplyr::filter(Group == "HC", Diversity == "Shannon diversity")
+
+healthy_simpson_df <- alpha_df %>%
+  dplyr::filter(Group == "HC", Diversity == "Simpson diversity")
+
+# Normality tests
+shapiro.test(as.numeric(healthy_df$Observed[healthy_df$Iron.intake == 50]))
+shapiro.test(as.numeric(healthy_df$Observed[healthy_df$Iron.intake == 500]))
+
+shapiro.test(as.numeric(healthy_shannon_df$Observed[healthy_shannon_df$Iron.intake == 50]))
+shapiro.test(as.numeric(healthy_shannon_df$Observed[healthy_shannon_df$Iron.intake == 500]))
+
+shapiro.test(as.numeric(healthy_simpson_df$Observed[healthy_simpson_df$Iron.intake == 50]))
+shapiro.test(as.numeric(healthy_simpson_df$Observed[healthy_simpson_df$Iron.intake == 500]))
+
+# t-tests
+ttest_richness <- healthy_df %>%
+  t_test(Observed ~ Iron.intake) %>%
+  add_y_position(fun = "max")
+
+ttest_shannon <- healthy_shannon_df %>%
+  wilcox_test(Observed ~ Iron.intake) %>%
+  add_y_position(fun = "max")
+
+ttest_simpson <- healthy_simpson_df %>%
+  wilcox_test(Observed ~ Iron.intake) %>%
+  add_y_position(fun = "max")
+
+# View results
+ttest_richness
+ttest_shannon
+ttest_simpson
+```
+### The diversity in groups are not all normal, richeness is normal, use t.test. Shannon and simpson are not normal and will use wilcox.test instead of t_test.
+
+```{r alpha diversity-richness}
+### Alpha diversity: Healthy mice only (50 vs 500 iron)
+
+# Species richness only
+healthy_df <- alpha_df %>%
+  dplyr::filter(Group == "HC", Diversity == "Species richness")
+
+# Welch two-sample t-test
+ttest_iron <- healthy_df %>%
+  t_test(Observed ~ Iron.intake) %>%
+  add_y_position(fun = "max")
+
+ttest_iron
+
+# Boxplot
+iron_ggboxplot <- 
+ggboxplot(
+  healthy_df,
+  x = "Iron.intake",
+  y = "Observed",
+  color = "Iron.intake",
+  fill = "Iron.intake",
+  alpha = 0.3,
+  outlier.shape = NA
+) +
+geom_jitter(width = 0.15) +
+stat_pvalue_manual(ttest_iron, label = "p") +
+scale_color_manual(values = c("50" = "#1b9e77", "500" = "#fc8d62")) +
+scale_fill_manual(values = c("50" = "#1b9e77", "500" = "#fc8d62")) +
+labs(
+  y = "Observed ASV Richness",
+  x = "Iron Intake"
+) +
+theme_bw() +
+theme(legend.position = "none")
+
+iron_ggboxplot
+```
+
+```{r}
+alpha_plot_df <- alpha_df %>%
+  dplyr::filter(Group == "HC") %>%
+  dplyr::mutate(
+    Order.q = dplyr::case_when(
+      Diversity == "Species richness"  ~ "0",
+      Diversity == "Shannon diversity" ~ "1",
+      Diversity == "Simpson diversity" ~ "2"
+    )
+  )
+
+alpha_plot_df %>%
+  ggplot(aes(x = factor(Iron.intake), y = Observed,
+             fill = factor(Iron.intake),
+             color = factor(Iron.intake))) + 
+  facet_wrap(. ~ Order.q, scales = "free_y") + 
+  geom_jitter(width = 0.15) + 
+  geom_boxplot(alpha = 0.5, outlier.shape = NA) + 
+  scale_color_manual(values = c("50" = "#1b9e77", "500" = "#fc8d62")) + 
+  scale_fill_manual(values = c("50" = "#1b9e77", "500" = "#fc8d62")) + 
+  labs(y = "Effective Number of ASVs", x = "Iron Intake") + 
+  theme_bw() + 
+  theme(legend.position = "bottom")
+```
+
+###INTERPRETATION 2: If you have categorical data, what can you conclude regarding the role that all ASVs (richess, q = 0) versus common ASVs (Shannon, q = 1) versus dominant ASVs (Simpson, q = 2) have on the biodiversity of your samples as it relates to your variable of interest?
+For q = 0, the high iron group appeared to have a higher median observed ASV richness than the 50 iron group; however, the difference was not statistically significant, as shown in the previous boxplot (p=0.165). For q = 1 and q = 2, similar visual shifts may suggest changes in common or dominant taxa, but conclusions should depend on their corresponding statistical tests rather than visual inspection alone.
+Overall, while higher iron intake may show a trend toward increased diversity, none of the alpha diversity test reached statistical significance. Thus, we accept the null hypothesis that the high iron and low iron intake did not alter the gut microbiota in healthy mice.
+
+###INTERPRETATION 3: How did you statistically test your scientific question in Interpretation #2? Why?
+I used t test for richeness, and then Wilcoxon rank-sum test for simpson and shannon because the diervsity for richeness in groups was normal, but in simpson and shannon indices were not normally distritbuted. Considering i only have 2 test groups to compare for diff, I used parameter and non-parametric t test accrodingly. 
+
+```{r Final info for reproducibility}
+# Take the time now that we are at the end of the script
+end_time <- Sys.time()
+end_time 
+
+# Echo the elapsed time
+elapsed_time <- round((end_time - start_time), 3)
+elapsed_time
+
+# Ensure reproducibility with package version information
+devtools::session_info()
+```
+
+
+
+
 

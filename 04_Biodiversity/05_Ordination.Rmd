@@ -1,0 +1,269 @@
+---
+title: "Beta-Diversity"
+output: html_document
+date: "2026-04-15"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Inputs:
+- preprocessed_physeq: asv, count table, metadata, taxonomy
+
+# Outputs
+- visualize data in ordinations (PCoA or NMDs)
+-Calculate stats (PERMANOVA and betadisper)
+
+```{r Load data and packages}
+pacman::p_load(tidyverse, phyloseq, patchwork, vegan,
+               install = FALSE)
+
+# Load colors and shapes
+source("/local/workdir/yz3272/Biodiversity_Salinity_16S/code/colors_and_shapes.R")
+source("/local/workdir/yz3272/Biodiversity_Salinity_16S/code/functions.R")
+
+#load data
+load("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/03_Pre-processing/preprocessed_phyloseq.RData")
+preprocessed_physeq
+
+# Intuition check on seq depth
+min(sample_sums(preprocessed_physeq))
+```
+
+
+```{r Create metadata_df}
+metadata_df <- 
+  preprocessed_physeq %>%
+  sample_data() %>%
+  data.frame()
+```
+
+```{r Explore the Raw Read Counts}
+# calculate read counts per sample 
+raw_TotalSeqs_df <- 
+  preprocessed_physeq %>%
+  # Calculate the total number of sequences/reads
+  sample_sums() %>%
+  data.frame()
+
+# Take a look 
+head(raw_TotalSeqs_df)
+
+# Rename the column 
+colnames(raw_TotalSeqs_df)[1] <- "TotalSeqs"
+
+# add a new column of num_ASVs (RAW, non-noramlized # ASVs)
+raw_TotalSeqsASVs_df <- 
+  raw_TotalSeqs_df %>%
+  mutate(num_ASVs = colSums(otu_table(preprocessed_physeq) > 1))
+
+#View(raw_TotalSeqsASVs_df)
+
+# Plot histogram of seq depth 
+rawSeq_histogram <- 
+  raw_TotalSeqsASVs_df %>%
+  ggplot(aes(x = TotalSeqs)) + 
+  geom_histogram(bins = 50) + 
+  scale_x_continuous(limits = c(0, 70000)) + 
+  labs(title = "Raw Seq Depth Histogram") + 
+  theme_bw()
+
+# Plot Seq Depth versus num_ASVs
+rawSeq_vs_numASV_plot <- 
+  raw_TotalSeqsASVs_df %>%
+  ggplot(aes(x = num_ASVs, y = TotalSeqs)) + 
+  geom_point() + 
+  scale_y_continuous(limits = c(0, 70000)) +
+  geom_smooth(method = "lm") + 
+  labs(title = "Seq Depth vs # ASVs") + 
+  theme_bw()
+
+# is it significant? 
+summary(lm(TotalSeqs ~ num_ASVs, data = raw_TotalSeqsASVs_df))
+
+# Put the two plots together.
+rawSeq_histogram + rawSeq_vs_numASV_plot +
+  plot_annotation(tag_levels = "A")
+```
+```{r  Scale Read Counts}
+min(sample_sums(preprocessed_physeq))
+
+# Scale the reads 
+scaled_physeq <- 
+  preprocessed_physeq %>%
+  scale_reads(round = "matround")
+
+# Look at it 
+scaled_physeq
+
+# Look at it more!
+#View(data.frame(otu_table(preprocessed_physeq)))
+#View(data.frame(otu_table(scaled_physeq)))
+
+# Confirm seq read depth of scaled_physeq 
+scaled_TotalSeqs_df <- 
+  scaled_physeq %>%
+  sample_sums() %>%
+  data.frame()
+
+colnames(scaled_TotalSeqs_df)[1] <- "TotalSeqs"
+
+# add a new column of num_ASVs (RAW, non-noramlized # ASVs)
+scaled_TotalSeqsASVs_df <- 
+  scaled_TotalSeqs_df %>%
+  mutate(num_ASVs = colSums(otu_table(scaled_physeq) > 1))
+
+# Plot it! 
+scaledSeq_histogram <- 
+  scaled_TotalSeqs_df %>%
+  ggplot(aes(x = TotalSeqs)) + 
+  geom_histogram(bins = 50) + 
+  labs(title = "Scaled Seq Depth Histogram") + 
+  scale_x_continuous(limits = c(0, 70000)) + 
+  theme_bw()
+scaledSeq_histogram
+
+# Scaling always gives us a range! 
+# MInimum sequences
+min(scaled_TotalSeqs_df$TotalSeqs) 
+
+# Total Range 
+range(scaled_TotalSeqs_df) # a range happen due to the scaling factor differ for each sample
+# How many is that range? 
+range_seqs <- (max(scaled_TotalSeqs_df$TotalSeqs) - min(scaled_TotalSeqs_df$TotalSeqs))
+range_seqs
+range_seqs/max(scaled_TotalSeqs_df$TotalSeqs)
+
+#View(scaled_TotalSeqs_df)
+
+# Set the axis min and max for the next plot 
+max_y <- max(scaled_TotalSeqs_df$TotalSeqs) + 10
+min_y <- min(scaled_TotalSeqs_df$TotalSeqs) - 10
+
+# Now, draw the plot 
+scaledSeq_vs_numASV_plot <- 
+  scaled_TotalSeqsASVs_df %>%
+  ggplot(aes(x = num_ASVs, y = TotalSeqs)) + 
+  geom_point() + 
+  scale_y_continuous(limits = c(min_y, max_y)) +
+  #geom_smooth(method = "lm") + 
+  theme_bw() + 
+  labs(title = "Scaled: Seq Depth vs # ASVs")
+
+# Put the two plots together.
+scaledSeq_histogram + scaledSeq_vs_numASV_plot +
+  plot_annotation(tag_levels = "A")
+```
+###INTERPRETATION 3: Evaluate the scaled read count plots above. Are the total number of sequences across all of your samples in the same general range? What is the minimum and maximum (i.e., the range) of the sequencing depth? How was the relationship with the number of ASVs modified after scaling the read counts?
+
+```{r Calculating dissimilarity}
+# Sorensen Dissimiliarty
+scaled_sorensen_dist <- phyloseq::distance(scaled_physeq, method = "bray", binary = TRUE)
+
+# What does it look like? 
+class(scaled_sorensen_dist)
+
+str(scaled_sorensen_dist)
+
+#head(as.matrix(scaled_sorensen_dist))
+
+# Bray-Curtis Dissimiliarty
+scaled_bray_dist <- phyloseq::distance(scaled_physeq, method = "bray", binary = FALSE)
+
+# Abundance-Unweighted UniFrac
+#scaled_uUnifrac_dist <- phyloseq::distance(scaled_physeq, method = "unifrac")
+
+# Abundance-Weighted UniFrac
+#scaled_wUnifrac_dist <- phyloseq::distance(scaled_physeq, method = "wunifrac")
+```
+
+### INTERPRETATION 4: Which dissimilarity metric is most related to your scientific question? Why or why not?
+
+```{r Sorensen}
+## 1. Run with by = terms for R² values, sensitive to order of variables! 
+## ALWAYS check and confirm the order of your terms and how they interact with each other.  
+sorensen_station_adonis_terms1 <- adonis2(scaled_sorensen_dist ~ Group + Iron_dose_mg, data = metadata_df2, by = "terms")
+sorensen_station_adonis_terms1
+
+# Check the order of the terms
+sorensen_station_adonis_terms2 <- adonis2(scaled_sorensen_dist ~ Group + Iron_dose_mg, data = metadata_df2, by = "terms")
+sorensen_station_adonis_terms2
+
+## 2. Run with by = "margin" for marginal p-values, which we can compare to the residuals from the first one. 
+sorensen_station_adonis_margin <- adonis2(scaled_sorensen_dist ~ Group + Iron_dose_mg, data = metadata_df2, by = "margin")
+sorensen_station_adonis_margin
+```
+
+```{r Bray-Curtis}
+## ALWAYS check and confirm the order of your terms and how they interact with each other.  
+bray_station_adonis_terms1 <- adonis2(scaled_bray_dist ~ Iron_dose_mg, data = metadata_df2, by = "terms")
+bray_station_adonis_terms1
+
+bray_station_adonis_terms2 <- adonis2(scaled_bray_dist ~ Iron_dose_mg, data = metadata_df2, by = "terms")
+bray_station_adonis_terms2
+
+## 2. Run with by = "margin" for marginal p-values
+bray_station_adonis_margin <- adonis2(scaled_bray_dist ~ Iron_dose_mg, data = metadata_df2, by = "margin")
+bray_station_adonis_margin
+```
+
+```{r Principal Coordinates Analysis}
+### SORENSEN 
+# First, calculate PCoA with Soresen
+scaled_soren_pcoa <- 
+  ordinate(physeq = scaled_physeq,
+         method = "PCoA",
+         distance = "bray", binary = TRUE)
+
+# Take a quick look
+str(scaled_soren_pcoa)
+
+# Plot it: Sorensen PCoA  
+sample_data(scaled_physeq)$Iron_intake <- sample_data(scaled_physeq)$`Iron intake`
+
+sorensen_pcoa_plot <- plot_ordination(
+  physeq = scaled_physeq,
+  ordination = scaled_soren_pcoa,
+  color = "Iron_intake",
+  shape = "Group",
+  title = "Sorensen PCoA"
+) +
+  geom_point(size = 5, alpha = 0.5) +
+  theme_bw() +
+  theme(legend.position = "right")
+sorensen_pcoa_plot
+```
+```{r Bray-Curtis PCoA }
+### Bray-Curtis 
+# Second, calculate PCoA with Bray-Curtis
+scaled_bray_pcoa <- 
+  ordinate(physeq = scaled_physeq,
+         method = "PCoA",
+         distance = "bray", binary = FALSE)
+
+# Plot it: Bray-Curtis PCoA 
+bray_pcoa_plot <- 
+  plot_ordination(
+    physeq = scaled_physeq,
+    ordination = scaled_bray_pcoa,
+  color = "Iron_intake",
+  shape = "Group",
+  title = "Bray-Curtis PCoA"
+) +
+  geom_point(size = 5, alpha = 0.5) +
+  theme_bw() +
+  theme(legend.position = "right")
+
+# Show the plots 
+sorensen_pcoa_plot + bray_pcoa_plot + 
+  plot_layout(guides = "collect") +
+  plot_annotation(tag_levels = "A")
+```
+
+```{r stats}
+# Bray-Curtis Betadisper - Station 
+dispr_bray_station <- betadisper(scaled_bray_dist, metadata_df2$Iron.intake)
+permutest(dispr_bray_station)
+
+```
+
