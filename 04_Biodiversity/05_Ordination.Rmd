@@ -177,6 +177,12 @@ scaledSeq_histogram + scaledSeq_vs_numASV_plot +
 ###INTERPRETATION 3: 
 After scaling, the total number of sequences across all HC samples was brought into the same general range, between 21,440 and 21,474 reads (a difference of only 34 reads, ~0.16%). The association between number of ASVs and read counts was flatter, therefore, downstream beta diversity analysis will like reflect true community differences instead of sequencing depth related artifacts.
 
+
+```{r}
+save(scaled_physeq, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/05_Ordination/scaled_physeq.RData")
+```
+
+
 ```{r Calculating dissimilarity}
 
 sample_data(scaled_physeq)$Iron.intake <- factor(
