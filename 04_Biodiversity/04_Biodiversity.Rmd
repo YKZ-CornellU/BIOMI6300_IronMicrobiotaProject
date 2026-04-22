@@ -186,14 +186,11 @@ healthy_simpson_df <- alpha_df %>%
   dplyr::filter(Group == "HC", Diversity == "Simpson diversity")
 
 # Normality tests
-shapiro.test(as.numeric(healthy_df$Observed[healthy_df$Iron.intake == 50]))
-shapiro.test(as.numeric(healthy_df$Observed[healthy_df$Iron.intake == 500]))
+shapiro.test(as.numeric(subset(healthy_df, Iron.intake %in% c(50, 500))$Observed)) #p=0.5
 
-shapiro.test(as.numeric(healthy_shannon_df$Observed[healthy_shannon_df$Iron.intake == 50]))
-shapiro.test(as.numeric(healthy_shannon_df$Observed[healthy_shannon_df$Iron.intake == 500]))
+shapiro.test(as.numeric(subset(healthy_shannon_df, Iron.intake %in% c(50, 500))$Observed))#p=0.0067
 
-shapiro.test(as.numeric(healthy_simpson_df$Observed[healthy_simpson_df$Iron.intake == 50]))
-shapiro.test(as.numeric(healthy_simpson_df$Observed[healthy_simpson_df$Iron.intake == 500]))
+shapiro.test(as.numeric(subset(healthy_simpson_df, Iron.intake %in% c(50, 500))$Observed))#p=0.0003
 
 # t-tests
 ttest_richness <- healthy_df %>%
@@ -213,7 +210,7 @@ ttest_richness
 ttest_shannon
 ttest_simpson
 ```
-### The diversity in groups are not all normal, richeness is normal, use t.test. Shannon and simpson are not normal and will use wilcox.test instead of t_test.
+
 
 ```{r alpha diversity-richness}
 ### Alpha diversity: Healthy mice only (50 vs 500 iron)

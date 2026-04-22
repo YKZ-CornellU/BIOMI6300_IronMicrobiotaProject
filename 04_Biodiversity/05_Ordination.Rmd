@@ -1,6 +1,7 @@
 ---
 title: "Beta-Diversity"
 output: html_document
+author: "Karina Zhang"
 date: "2026-04-15"
 ---
 ```{r setup, include=FALSE}
@@ -30,42 +31,56 @@ preprocessed_physeq
 min(sample_sums(preprocessed_physeq))
 ```
 
+###INTERPRETATION 1: 
+My scientific question is whether feeding mice a low-iron diet versus a high-iron diet is associated with differences in the gut microbial community profile. My hypothesis is that greater dietary iron intake results in more unabsorbed iron reaching the murine colon, which may selectively promote or suppress the growth of specific microbial taxa. Consequently, the microbial community structure is expected to differ between diet groups. Because this hypothesis concerns changes in the abundance of taxa rather than simply their presence or absence, this analysis primarily relates to abundance-weighted metrics (relative abundance).
 
 ```{r Create metadata_df}
-metadata_df <- 
-  preprocessed_physeq %>%
-  sample_data() %>%
-  data.frame()
+metadata_df <- sample_data(preprocessed_physeq) %>%
+  data.frame() %>%
+  filter(Group == "HC", Iron.intake %in% c("50", "500"))
+
+physeq_HC <- prune_samples(rownames(metadata_df), preprocessed_physeq)
+physeq_HC <- prune_taxa(taxa_sums(physeq_HC) > 0, physeq_HC)
 ```
 
 ```{r Explore the Raw Read Counts}
+# Drop taxa with zero counts after subsetting
+physeq_HC <- prune_taxa(taxa_sums(physeq_HC) > 0, physeq_HC)
+
 # calculate read counts per sample 
 raw_TotalSeqs_df <- 
-  preprocessed_physeq %>%
-  # Calculate the total number of sequences/reads
+  physeq_HC %>%
   sample_sums() %>%
   data.frame()
-
-# Take a look 
-head(raw_TotalSeqs_df)
 
 # Rename the column 
 colnames(raw_TotalSeqs_df)[1] <- "TotalSeqs"
 
-# add a new column of num_ASVs (RAW, non-noramlized # ASVs)
+# Add sample IDs as a column
+raw_TotalSeqs_df$SampleID <- rownames(raw_TotalSeqs_df)
+
+# Calculate number of observed ASVs per sample
+otu_mat <- as(otu_table(physeq_HC), "matrix")
+
+# Make sure samples are rows
+if (taxa_are_rows(physeq_HC)) {
+  otu_mat <- t(otu_mat)
+}
+
+num_ASVs_per_sample <- rowSums(otu_mat > 1)
+
+# add a new column of num_ASVs (RAW, non-normalized # ASVs per sample)
 raw_TotalSeqsASVs_df <- 
   raw_TotalSeqs_df %>%
-  mutate(num_ASVs = colSums(otu_table(preprocessed_physeq) > 1))
-
-#View(raw_TotalSeqsASVs_df)
+  mutate(num_ASVs = num_ASVs_per_sample)
 
 # Plot histogram of seq depth 
 rawSeq_histogram <- 
   raw_TotalSeqsASVs_df %>%
   ggplot(aes(x = TotalSeqs)) + 
-  geom_histogram(bins = 50) + 
+  geom_histogram(bins = 30) + 
   scale_x_continuous(limits = c(0, 70000)) + 
-  labs(title = "Raw Seq Depth Histogram") + 
+  labs(title = "Raw Seq Depth Histogram: HC50 and HC500") + 
   theme_bw()
 
 # Plot Seq Depth versus num_ASVs
@@ -75,22 +90,26 @@ rawSeq_vs_numASV_plot <-
   geom_point() + 
   scale_y_continuous(limits = c(0, 70000)) +
   geom_smooth(method = "lm") + 
-  labs(title = "Seq Depth vs # ASVs") + 
+  labs(title = "Seq Depth vs # ASVs: HC50 and HC500") + 
   theme_bw()
 
 # is it significant? 
 summary(lm(TotalSeqs ~ num_ASVs, data = raw_TotalSeqsASVs_df))
 
-# Put the two plots together.
+# Put the two plots together
 rawSeq_histogram + rawSeq_vs_numASV_plot +
   plot_annotation(tag_levels = "A")
 ```
+###INTERPRETATION 2:
+The raw sequencing depths for HC_50 and HC_500 samples ranged from 21,000 to 58,000 reads, so read counts were scaled to the minimum sample depth to retain all samples while standardizing library size across groups. This scaling helps to reduce bias from unequal sequencing depth in downstream beta-diversity analyses, however, this way it discards a great portion of reads from deeper samples. Consequently, it may decrease the sensitivity to minor community differences and rare taxa abundance. 
+
+
 ```{r  Scale Read Counts}
 min(sample_sums(preprocessed_physeq))
 
 # Scale the reads 
 scaled_physeq <- 
-  preprocessed_physeq %>%
+  physeq_HC %>%
   scale_reads(round = "matround")
 
 # Look at it 
@@ -154,88 +173,49 @@ scaledSeq_vs_numASV_plot <-
 scaledSeq_histogram + scaledSeq_vs_numASV_plot +
   plot_annotation(tag_levels = "A")
 ```
-###INTERPRETATION 3: Evaluate the scaled read count plots above. Are the total number of sequences across all of your samples in the same general range? What is the minimum and maximum (i.e., the range) of the sequencing depth? How was the relationship with the number of ASVs modified after scaling the read counts?
+
+###INTERPRETATION 3: 
+After scaling, the total number of sequences across all HC samples was brought into the same general range, between 21,440 and 21,474 reads (a difference of only 34 reads, ~0.16%). The association between number of ASVs and read counts was flatter, therefore, downstream beta diversity analysis will like reflect true community differences instead of sequencing depth related artifacts.
 
 ```{r Calculating dissimilarity}
+
+sample_data(scaled_physeq)$Iron.intake <- factor(
+  sample_data(scaled_physeq)$Iron.intake,
+  levels = c(50, 500),
+  labels = c("HC50", "HC500")
+)
+
+# Bray-Curtis Dissimiliarty
+scaled_bray_dist <- phyloseq::distance(scaled_physeq, method = "bray", binary = FALSE)
+str(scaled_bray_dist)
+
+bray_permanova <- adonis2(
+  scaled_bray_dist ~ Iron.intake,
+  data = metadata_df
+)
+bray_permanova
+
+### for exploration, run Sorensen to test the persence of major memebers:
 # Sorensen Dissimiliarty
 scaled_sorensen_dist <- phyloseq::distance(scaled_physeq, method = "bray", binary = TRUE)
+
+sorensen_permanova <- adonis2(
+  scaled_sorensen_dist ~ Iron.intake,
+  data = metadata_df
+)
+sorensen_permanova
 
 # What does it look like? 
 class(scaled_sorensen_dist)
 
 str(scaled_sorensen_dist)
-
-#head(as.matrix(scaled_sorensen_dist))
-
-# Bray-Curtis Dissimiliarty
-scaled_bray_dist <- phyloseq::distance(scaled_physeq, method = "bray", binary = FALSE)
-
-# Abundance-Unweighted UniFrac
-#scaled_uUnifrac_dist <- phyloseq::distance(scaled_physeq, method = "unifrac")
-
-# Abundance-Weighted UniFrac
-#scaled_wUnifrac_dist <- phyloseq::distance(scaled_physeq, method = "wunifrac")
 ```
 
-### INTERPRETATION 4: Which dissimilarity metric is most related to your scientific question? Why or why not?
+### INTERPRETATION 4:
+Given the fact that my question asks whether HC500 and HC50 differ in gut microbial community composition in terms of taxon abundances, not just presence or absence, Bray–Curtis would be the best fit as we do not have phylogenetic tree. Bray–Curtis is the most appropriate one because it is abundance-weighted and therefore better capture the dissimilartiy in the asked question. Sorensen Dissimiliarty was also explored, and it had a p-value of 0.342, again, suggesting the 10-fold diff in non-heme iron diet did not lead to sig. diff in the microbial taxa diversity between 2 groups.
 
-```{r Sorensen}
-## 1. Run with by = terms for R² values, sensitive to order of variables! 
-## ALWAYS check and confirm the order of your terms and how they interact with each other.  
-sorensen_station_adonis_terms1 <- adonis2(scaled_sorensen_dist ~ Group + Iron_dose_mg, data = metadata_df2, by = "terms")
-sorensen_station_adonis_terms1
-
-# Check the order of the terms
-sorensen_station_adonis_terms2 <- adonis2(scaled_sorensen_dist ~ Group + Iron_dose_mg, data = metadata_df2, by = "terms")
-sorensen_station_adonis_terms2
-
-## 2. Run with by = "margin" for marginal p-values, which we can compare to the residuals from the first one. 
-sorensen_station_adonis_margin <- adonis2(scaled_sorensen_dist ~ Group + Iron_dose_mg, data = metadata_df2, by = "margin")
-sorensen_station_adonis_margin
-```
-
-```{r Bray-Curtis}
-## ALWAYS check and confirm the order of your terms and how they interact with each other.  
-bray_station_adonis_terms1 <- adonis2(scaled_bray_dist ~ Iron_dose_mg, data = metadata_df2, by = "terms")
-bray_station_adonis_terms1
-
-bray_station_adonis_terms2 <- adonis2(scaled_bray_dist ~ Iron_dose_mg, data = metadata_df2, by = "terms")
-bray_station_adonis_terms2
-
-## 2. Run with by = "margin" for marginal p-values
-bray_station_adonis_margin <- adonis2(scaled_bray_dist ~ Iron_dose_mg, data = metadata_df2, by = "margin")
-bray_station_adonis_margin
-```
 
 ```{r Principal Coordinates Analysis}
-### SORENSEN 
-# First, calculate PCoA with Soresen
-scaled_soren_pcoa <- 
-  ordinate(physeq = scaled_physeq,
-         method = "PCoA",
-         distance = "bray", binary = TRUE)
-
-# Take a quick look
-str(scaled_soren_pcoa)
-
-# Plot it: Sorensen PCoA  
-sample_data(scaled_physeq)$Iron_intake <- sample_data(scaled_physeq)$`Iron intake`
-
-sorensen_pcoa_plot <- plot_ordination(
-  physeq = scaled_physeq,
-  ordination = scaled_soren_pcoa,
-  color = "Iron_intake",
-  shape = "Group",
-  title = "Sorensen PCoA"
-) +
-  geom_point(size = 5, alpha = 0.5) +
-  theme_bw() +
-  theme(legend.position = "right")
-sorensen_pcoa_plot
-```
-```{r Bray-Curtis PCoA }
-### Bray-Curtis 
-# Second, calculate PCoA with Bray-Curtis
 scaled_bray_pcoa <- 
   ordinate(physeq = scaled_physeq,
          method = "PCoA",
@@ -243,27 +223,123 @@ scaled_bray_pcoa <-
 
 # Plot it: Bray-Curtis PCoA 
 bray_pcoa_plot <- 
+  plot_ordination(physeq = scaled_physeq,
+                ordination = scaled_bray_pcoa,
+                color = "Iron.intake",
+                title = "Bray-Curtis PCoA") + 
+  geom_point(size = 5, alpha = 0.5, aes(color = Iron.intake)) + 
+  theme_bw() + 
+  theme(legend.position = "right")
+
+
+# Calculate PCoA with Sorensen dissimilarity
+scaled_sorensen_pcoa <- 
+  ordinate(
+    physeq = scaled_physeq,
+    method = "PCoA",
+    distance = "bray",
+    binary = TRUE
+  )
+
+# Plot it: Sorensen PCoA 
+sorensen_pcoa_plot <- 
   plot_ordination(
     physeq = scaled_physeq,
-    ordination = scaled_bray_pcoa,
-  color = "Iron_intake",
-  shape = "Group",
-  title = "Bray-Curtis PCoA"
-) +
-  geom_point(size = 5, alpha = 0.5) +
-  theme_bw() +
+    ordination = scaled_sorensen_pcoa,
+    color = "Iron.intake",
+    title = "Sorensen PCoA"
+  ) + 
+  geom_point(size = 5, alpha = 0.5, aes(color = Iron.intake)) + 
+  theme_bw() + 
   theme(legend.position = "right")
 
 # Show the plots 
-sorensen_pcoa_plot + bray_pcoa_plot + 
+sorensen_pcoa_plot+ bray_pcoa_plot + 
   plot_layout(guides = "collect") +
   plot_annotation(tag_levels = "A")
 ```
 
+###INTERPRETATION 5: 
+The Bray–Curtis PCoA shows that the first two axes explain 33.4% and 14.7% of variation in the microbial community composition. HC_50 and HC_500 groups overlap substantially with no clustering observed, suggesting different iron dose (10-fold diff in non-heme content) has little effect on the gut microbiome diversity; this is also confirmed with PERMANOVA having a p-value of 0.1. The Sorensen plot did not capture as much diff as bray crutis PCoA plot, but basically telling the same story that the beta diverstiy did not diff sig. between groups.
+
+```{r NMD plot}
+# Up till here, i don't think NMD plot is necessary given my PCoA explains~48% of the distribution diff. just plotting to learn the code
+scaled_bray_nmds <- 
+  ordinate(
+    physeq = scaled_physeq,
+    method = "NMDS",
+    distance = "bray"
+  )
+
+bray_nmds_plot <- 
+  plot_ordination(
+    physeq = scaled_physeq,
+    ordination = scaled_bray_nmds,
+    color = "Iron.intake",
+    title = "Bray-Curtis NMDS"
+  ) +
+  geom_point(size = 5, alpha = 0.7) +
+  theme_bw() +
+  theme(legend.position = "right")
+
+# Calculate NMDS with Sorensen dissimilarity
+scaled_sorensen_nmds <- 
+  ordinate(
+    physeq = scaled_physeq,
+    method = "NMDS",
+    distance = "bray",
+    binary = TRUE
+  )
+
+# Plot it: Sorensen NMDS
+sorensen_nmds_plot <- 
+  plot_ordination(
+    physeq = scaled_physeq,
+    ordination = scaled_sorensen_nmds,
+    color = "Iron.intake",
+    title = "Sorensen NMDS"
+  ) +
+  geom_point(size = 5, alpha = 0.7) +
+  theme_bw() +
+  theme(legend.position = "right")
+
+
+# Show the plots 
+sorensen_nmds_plot + bray_nmds_plot + 
+  plot_layout(guides = "collect") +
+  plot_annotation(tag_levels = "A")
+```
+
+###INTERPRETATION 6:
+Both NMDS plots show no seperations between HC_50 and HC_500 samples, indicating no sig. differences in gut microbial community composition by iron intake. The Sorensen NMDS suggests broadly similar microbial members between groups. The Bray–Curtis NMDS shows a little bit seperation, implying such treatment effect is more likely causing minor shifts in relative abundance than major taxonomic turnover.However, the stress value for NMDs is greater than 0.2 suggest the limitation of this distribution method, PCoA would be better representing the results.
+
+
+```{r 4 plots together}
+# Show plot
+sorensen_pcoa_plot + bray_pcoa_plot + 
+sorensen_nmds_plot + bray_nmds_plot + 
+  plot_layout(guides = "collect") +
+  plot_annotation(tag_levels = "A")
+```
+
+###INTERPRETATION 7: Plot both the PCoA and NMDS together. Which of the two ordination methods best represents your data and why? Consider the strengths and limitations of each method. For example, the variance explained by each PCoA axis versus the stress value of the NMDS could be used to justify your choice. Do both methods support the same biological conclusions?
+
+Among these 4 plots, PCoA best represents this data set because the Bray–Curtis PCoA explains a relatively high proportion of variation in the first two axes (48.1%), making the dominant beta-diversity patterns easier to interpret, whereas NMDS relies on stress values rather than variance explained. I think Bray–Curtis PCoA is preferable as the primary ordination, with NMDS serving as a secondary secreening for hidden patterns.
+
+
+###INTERPRETATION 8: 
+The PERMANOVA based on Bray–Curtis distancing suggested iron intake explained only ~3.5% of the variation in gut microbial community composition between HC_50 and HC_500 samples (R² = 0.035). This was not statistically significant (F = 1.75, p = 0.092), although the marginal p-value may suggest a weak trend toward differences between groups. More to be explored in differential abundance of taxa.Based on this beta diveristy, i can accpet my null hypo that the microbial diversity is the same in 50 and 500ppm iron groups.
+
 ```{r stats}
 # Bray-Curtis Betadisper - Station 
-dispr_bray_station <- betadisper(scaled_bray_dist, metadata_df2$Iron.intake)
+dispr_bray_station <- betadisper(scaled_bray_dist, metadata_df$Iron.intake)
 permutest(dispr_bray_station)
-
 ```
+###INTERPRETATION 9: 
+A permutation test based on Bray–Curtis distances was non-significant (F = 0.92, p = 0.342), indicating similar within-group dispersion between HC_50 and HC_500. Therefore, the previously observed PERMANOVA differences are not driven by unequal group variability (although not sig.).
+
+###INTERPRETATION 10: 
+Overall, results seen here suggested that gut microbial community composition did not differ significantly between HC_50 and HC_500 mice, and within group variability was similar. Therefore, a 10-fold difference in dietary non-heme iron did not produce a clear overall shift in beta-diversity, though subtle taxon-level changes may still be present.
+
+
 
