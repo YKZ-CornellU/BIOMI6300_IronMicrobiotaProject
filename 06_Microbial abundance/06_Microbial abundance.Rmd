@@ -1,0 +1,260 @@
+---
+title: "06_Microbial Abundance"
+author: "Karina Zhang"
+date: "2026-04-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Load in the packages 
+pacman::p_load(tidyverse, phyloseq, DT, patchwork, DESeq2, microbiome,
+  install = FALSE)
+
+# load colors
+source("/local/workdir/yz3272/Biodiversity_Salinity_16S/code/colors_and_shapes.R")
+
+load("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/06_Microbial abundance/scaled_physeq.RData")
+
+# Look at the data 
+scaled_physeq
+
+# Instuition check
+sample_sums(scaled_physeq) %>% summary()
+
+# Set your two-group variable
+sample_data(scaled_physeq)$Group <- factor(sample_data(scaled_physeq)$Group)
+```
+
+
+```{r Phyla level analysis}
+phylum_df <- 
+  scaled_physeq %>%
+  tax_glom(taxrank = "Phylum") %>%
+  transform_sample_counts(function(x) x / sum(x)) %>%
+  psmelt() %>%
+  mutate(Group = factor(Group))
+
+phylum_df %>%
+  group_by(Phylum) %>%
+  summarize(mean_RelAbund = mean(Abundance), .groups = "drop") %>%
+  arrange(desc(mean_RelAbund)) %>%
+  datatable()
+
+# Make a list of phyla the top phyla 
+top10_phyla <- 
+  phylum_df %>%
+  group_by(Phylum) %>%
+  summarize(mean_PercAbund = mean(Abundance)) %>%
+  arrange(-mean_PercAbund) %>%
+  head(n = 10) %>%
+  pull(Phylum)
+top10_phyla
+
+phylum_df %>%
+filter(Phylum %in% top10_phyla) %>%
+ggplot(aes(x = Iron.intake, y = Abundance, fill = Iron.intake, color = Iron.intake)) +
+geom_boxplot(alpha = 0.5, outlier.shape = NA) +
+geom_jitter(width = 0.15, alpha = 0.7) +
+facet_wrap(~Phylum, scales = "free_y") +
+scale_fill_manual(values = iron_colors) +
+scale_color_manual(values = iron_colors) +
+theme_bw() +
+labs(title = "Top 10 Phyla by Iron Intake", x = NULL, y = "Relative abundance") +
+theme(legend.position = "none")
+```
+
+###INTERPRETATION 2: Which phyla in your dataset have the highest relative abundances? What are their abundances? We will focus on these phyla for plotting below. :)
+
+
+```{r genera levels}
+genus_df <- 
+  scaled_physeq %>%
+  tax_glom(taxrank = "Genus") %>%
+  transform_sample_counts(function(x) x / sum(x)) %>%
+  psmelt() %>%
+  mutate(Group = factor(Group))
+
+top20_genera <- 
+  genus_df %>%
+  group_by(Genus) %>%
+  summarize(mean_RelAbund = mean(Abundance), .groups = "drop") %>%
+  arrange(desc(mean_RelAbund)) %>%
+  slice_head(n = 20) %>%
+  pull(Genus)
+
+genus_df %>%
+filter(Genus %in% top20_genera) %>%
+ggplot(aes(x = Iron.intake, y = Abundance, fill = Iron.intake, color = Iron.intake)) +
+geom_boxplot(alpha = 0.5, outlier.shape = NA) +
+geom_jitter(width = 0.15, alpha = 0.7) +
+facet_wrap(~Genus, scales = "free_y") +
+scale_fill_manual(values = iron_colors) +
+scale_color_manual(values = iron_colors) +
+theme_bw() +
+labs(title = "Top 20 Genera by Iron Intake", x = NULL, y = "Relative abundance") +
+theme(legend.position = "none")
+```
+
+
+```{r ASV groups}
+set.seed(238428)
+
+ASV_df <- 
+  scaled_physeq %>%
+  prune_taxa(taxa_sums(.) >= 10, .) %>%   # adjust threshold
+  transform_sample_counts(function(x) x / sum(x)) %>%
+  psmelt() %>%
+  mutate(Group = factor(Group))
+
+top20_ASVs <- 
+  ASV_df %>%
+  group_by(OTU) %>%   # sometimes this column may be ASV; check names(ASV_df)
+  summarize(mean_RelAbund = mean(Abundance), .groups = "drop") %>%
+  arrange(desc(mean_RelAbund)) %>%
+  slice_head(n = 20) %>%
+  pull(OTU)
+
+ASV_df %>%
+filter(OTU %in% top20_ASVs) %>%
+ggplot(aes(x = Iron.intake, y = Abundance, fill = Iron.intake, color = Iron.intake)) +
+geom_boxplot(alpha = 0.5, outlier.shape = NA, width = 0.65) +
+geom_jitter(aes(shape = Iron.intake), width = 0.15, size = 2, alpha = 0.7) +
+facet_wrap(~OTU, scales = "free_y", ncol = 5) +
+scale_fill_manual(values = iron_colors) +
+scale_color_manual(values = iron_colors) +
+scale_shape_manual(values = iron_shapes) +
+labs(title = "Top 20 ASVs by Iron Intake", x = NULL, y = "Relative abundance") +
+theme_bw() +
+theme(legend.position = "none", strip.text = element_text(face = "bold", size = 9), axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1))
+```
+```{r Stacked bar graphs}
+# Top 10 phyla
+phylum_df %>%
+filter(Phylum %in% top10_phyla) %>%
+ggplot(aes(x = factor(ID), y = Abundance, fill = Phylum)) +
+geom_bar(stat = "identity", width = 0.9) +
+facet_grid(~Iron.intake, scales = "free_x", space = "free_x") +
+scale_fill_manual(values = phylum_colors) +
+theme_bw() +
+labs(title = "Top 10 Phyla by Individual Sample", x = "Sample ID", y = "Relative abundance") +
+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), strip.text = element_text(face = "bold"))
+
+# top 10 genera
+genus_df %>%
+filter(Genus %in% top20_genera) %>%
+ggplot(aes(x = factor(ID), y = Abundance, fill = Genus)) +
+geom_bar(stat = "identity", width = 0.9) +
+facet_grid(~Iron.intake, scales = "free_x", space = "free_x") +
+theme_bw() +
+labs(title = "Top 10 Genera by Individual Sample", x = "Sample ID", y = "Relative abundance") +
+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), strip.text = element_text(face = "bold"))
+```
+
+
+```{r differential abundance}
+# Make sure Iron.intake is the testing variable
+sample_data(scaled_physeq)$Iron.intake <- factor(sample_data(scaled_physeq)$Iron.intake)
+sample_data(scaled_physeq)$Iron.intake <- relevel(sample_data(scaled_physeq)$Iron.intake, ref = "HC50")
+
+# Check group sizes
+table(sample_data(scaled_physeq)$Iron.intake)
+
+# Convert phyloseq object to DESeq2 object
+dds <- phyloseq_to_deseq2(scaled_physeq, ~ Iron.intake)
+
+# Run DESeq2
+dds <- DESeq(dds, test = "Wald", fitType = "parametric")
+
+# Extract HC500 vs HC50 results
+res <- results(dds, contrast = c("Iron.intake", "HC500", "HC50"), alpha = 0.05)
+
+# Convert results to dataframe and add taxonomy
+deseq_ASV_results <- as.data.frame(res) %>%
+rownames_to_column("OTU") %>%
+left_join(as.data.frame(tax_table(scaled_physeq)) %>% rownames_to_column("OTU"), by = "OTU") %>%
+arrange(padj)
+
+# View all results
+datatable(deseq_ASV_results)
+
+# Significant ASVs only
+sig_deseq_ASVs <- deseq_ASV_results %>%
+filter(!is.na(padj), padj < 0.05) %>%
+arrange(padj)
+
+datatable(sig_deseq_ASVs)
+
+## not getting anyting sig. after correction
+```
+
+```{r differential abundance for genera}
+# Differential abundance at Genus level with DESeq2
+
+# Agglomerate counts to Genus level
+genus_physeq <- scaled_physeq %>%
+tax_glom(taxrank = "Genus")
+
+# Make sure metadata variable is factor
+sample_data(genus_physeq)$Iron.intake <- factor(sample_data(genus_physeq)$Iron.intake)
+sample_data(genus_physeq)$Iron.intake <- relevel(sample_data(genus_physeq)$Iron.intake, ref = "HC50")
+
+# Convert phyloseq object to DESeq2 object
+dds_genus <- phyloseq_to_deseq2(genus_physeq, ~ Iron.intake)
+
+# Run DESeq2
+dds_genus <- DESeq(dds_genus, test = "Wald", fitType = "parametric")
+
+# Extract HC500 vs HC50 results
+res_genus <- results(dds_genus, contrast = c("Iron.intake", "HC500", "HC50"), alpha = 0.1)
+
+# Convert to dataframe + taxonomy
+deseq_genus_results <- as.data.frame(res_genus) %>%
+rownames_to_column("FeatureID") %>%
+left_join(as.data.frame(tax_table(genus_physeq)) %>% rownames_to_column("FeatureID"), by = "FeatureID") %>%
+mutate(Genus_label = ifelse(is.na(Genus) | Genus == "", FeatureID, Genus)) %>%
+select(Genus_label, Phylum, Class, Order, Family, Genus, baseMean, log2FoldChange, lfcSE, stat, pvalue, padj, FeatureID) %>%
+arrange(padj)
+
+# View all results
+datatable(deseq_genus_results)
+
+# Significant genera only
+sig_deseq_genera <- deseq_genus_results %>%
+filter(!is.na(padj), padj < 0.1) %>%
+arrange(padj)
+
+datatable(sig_deseq_genera)
+```
+
+```{r Visualization of differential abundance}
+lab_df <- sig_deseq_genera %>%
+select(Genus_label, log2FoldChange, padj) %>%
+mutate(label = paste0("log2FC = ", round(log2FoldChange, 2),
+                      "\nFDR = ", signif(padj, 2)))
+
+plot_df <- genus_df %>%
+filter(Genus %in% c("Romboutsia", "Adlercreutzia")) %>%
+left_join(lab_df, by = c("Genus" = "Genus_label"))
+
+ggplot(plot_df,
+aes(x = Iron.intake, y = Abundance,
+fill = Iron.intake, color = Iron.intake)) +
+geom_boxplot(alpha = 0.5, outlier.shape = NA, width = 0.65) +
+geom_jitter(width = 0.12, size = 2, alpha = 0.8) +
+facet_wrap(~Genus, scales = "free_y") +
+geom_text(data = plot_df %>% distinct(Genus, label),
+aes(x = 1.5, y = Inf, label = label),
+inherit.aes = FALSE,
+vjust = 1.2,
+fontface = "bold",
+size = 4) +
+scale_fill_manual(values = iron_colors) +
+scale_color_manual(values = iron_colors) +
+theme_bw() +
+labs(title = "Differentially Abundant Genera", x = NULL, y = "Relative abundance") +
+theme(legend.position = "none")
+```
+
+
