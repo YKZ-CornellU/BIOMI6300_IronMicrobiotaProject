@@ -8,7 +8,8 @@
 - **Dataset**: 16S rRNA gene amplicon sequencing data from murine fecal samples under varying dietary iron conditions.
 - **Original publication**:  
   - * Initial gut microbiota composition is a determining factor in the promotion of colorectal cancer by oral iron supplementation: evidence from a murine model*  
-  - Link: https://doi.org/10.1186/s40168-025-02101-1
+  - Link: https://doi.org/10.1186/s40168-025-02101-1;  NCBI accession ID: Bioproject PRJNA1138753 
+  - This dataset included  a total of 102 murine fecal samples sequenced using 16s rDNA sequencing method with MiSeq250 plateform (2 x 250 bp paired-end sequencing of PCR products (including primers). The following primer pair was used, targetting V5-V6 region: P609D 5′-GGMTTAGATACCCBDGTA- 3′ and P699R 5′-GGGTYKCGCTCGTTR- 3′. 
 
 ## Scientific Question
 Does dietary iron intake (amount/dose) significantly alter fecal microbial community composition and structure in healthy control mice, and are these alterations detectable in the fecal microbiota?
@@ -35,14 +36,12 @@ Specifically:
 
 ## Project Goals
 - Import and curate metadata and sequence data.
-- Quantify α-diversity, β-diversity, and taxonomic composition under different iron conditions.
-- Identify differentially abundant taxa with LEfSe.
+- Assess the α-diversity, β-diversity, and taxonomic composition under different iron conditions.
+- Identify differentially abundant bacterial genera in 2 groups..
 - Interpret microbiome changes in the context of iron as both a critical host micronutrient and a key resource for microbial growth.
 
 ## Repository Structure (Planned)
-- `data/` – Small processed data files or metadata only (no raw fastq files).
-- `scripts/` – R or Python scripts for processing, analysis, and plotting.
-- `results/` – Summary tables, figures, and intermediate outputs.
-- `docs/` – Additional documentation or notes.
+- `Data/` – Small processed R.data files (no raw fastq files).
+- `Analysiss/` – R or Python scripts for processing, analysis, and plotting.
+- `Figurs/` – Data visualization figures.
 
-> **Important**: Large raw sequence files (e.g., `.fastq`, `.bam`) will **not** be stored in this repository. Please refer to:NCBI accession ID: Bioproject PRJNA1138753 
