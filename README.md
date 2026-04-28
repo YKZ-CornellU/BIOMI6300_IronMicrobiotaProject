@@ -18,7 +18,7 @@ Specifically:
 
 1. Does iron supplementation change overall **α-diversity** (within-sample diversity) and **β-diversity** (between-sample community dissimilarity)?
 2. Does iron intake shift the **relative abundance** of major bacterial phyla and genera?
-3. Are specific taxa differentially enriched or depleted in response to iron levels, as detected by LEfSe?
+3. Are specific taxa differentially enriched or depleted in response to iron levels, as detected by differential abundance?
 
 ## Hypotheses
 
@@ -31,17 +31,15 @@ Specifically:
 3. **Taxa-specific hypothesis**  
    Iron-rich diets will increase the relative abundance of specific bacterial taxa that benefit from elevated luminal iron (e.g., certain Proteobacteria or pathobionts) and decrease taxa that are more competitive under iron-limited conditions (such as lactobacillus).
 
-4. **Fecal signal hypothesis**  
-   These iron-driven changes in the gut microbiota will be robustly detectable in fecal samples, allowing fecal microbiota profiling to be used as a proxy for intestinal community shifts.
-
 ## Project Goals
-- Import and curate metadata and sequence data.
-- Assess the α-diversity, β-diversity, and taxonomic composition under different iron conditions.
-- Identify differentially abundant bacterial genera in 2 groups..
-- Interpret microbiome changes in the context of iron as both a critical host micronutrient and a key resource for microbial growth.
+- Import and organize the metadata and sequence data
+- Assess raw sequence quality and preprocessing fastq files
+- Assign taxonomy to merged sequence using DADA2
+- Assess the α-diversity, β-diversity, and taxonomic composition under different iron conditions
+- Identify differentially abundant bacterial genera in 2 groups
+- Interpret microbiome changes in the context of iron as both a critical host micronutrient and a key resource for microbial growth
 
 ## Repository Structure (Planned)
-- `Data/` – Small processed R.data files (no raw fastq files).
-- `Analysiss/` – R or Python scripts for processing, analysis, and plotting.
-- `Figurs/` – Data visualization figures.
-
+- `Data/` – Small processed R.data files (no raw fastq files)
+- `Analysiss/` – R or Python scripts for processing, analysis, and plotting
+- `Figurs/` – Data visualization figures
