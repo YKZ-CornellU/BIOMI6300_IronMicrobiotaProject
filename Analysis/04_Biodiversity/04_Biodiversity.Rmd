@@ -21,7 +21,7 @@ source("/local/workdir/yz3272/Biodiversity_Salinity_16S/code/colors_and_shapes.R
 source("/local/workdir/yz3272/Biodiversity_Salinity_16S/code/functions.R")
 
 #load data
-load("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/03_Pre-processing/preprocessed_phyloseq.RData")
+load("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Data/03_Preprocessing/preprocessed_phyloseq.RData")
 preprocessed_physeq
 
 # Intuition check on seq depth
@@ -54,7 +54,7 @@ dim(iNEXT_input_df)
 
 #save(iNEXT_data, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/04_Biodiversity/iNEXT_data.RData")
 
-load("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/04_Biodiversity/iNEXT_data.RData")
+load("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Data/04_Biodiversity/iNEXT_data.RData")
 
 # Inspect 
 str(iNEXT_data)
@@ -107,12 +107,20 @@ iNEXT_color_df <-
 ```
 
 ```{r Rarefaction Curves}
-ggiNEXT(iNEXT_data, type = 1, facet.var = "Order.q") + 
+p<- ggiNEXT(iNEXT_data, type = 1, facet.var = "Order.q") + 
   scale_color_manual(values = iNEXT_color_df$plot_color) + 
   scale_fill_manual(values = iNEXT_color_df$plot_color) + 
   theme_bw() + 
   theme(legend.position = "none") + 
   labs(y = "Effective Number of ASVs", x = "Number of Sequences")
+
+ggsave(
+  filename = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/04_Biodiversity/iNEXT_rarefaction_curve.png", 
+  plot = p,
+  width = 10,
+  height = 6,
+  dpi = 600
+)
 ```
 
 
@@ -139,7 +147,7 @@ iNEXT_manual_df <-
 
 dim(iNEXT_manual_df)
 
-iNEXT_manual_df %>%
+p2<- iNEXT_manual_df %>%
   dplyr::filter(Method == "Rarefaction") %>%
   ggplot(aes(x = m, y = qD, color = group_iron, group = names)) + 
   geom_line() + 
@@ -148,6 +156,14 @@ iNEXT_manual_df %>%
   theme_bw() + 
   labs(y = "Effective Number of ASVs", x = "Number of Sequences") + 
   theme(legend.position = "bottom")
+
+ggsave(
+  filename = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/04_Biodiversity/iNEXT_manual_rarefaction.png",
+  plot = p2,
+  width = 12,
+  height = 8,
+  dpi = 600
+)
 
 ```
 
@@ -249,6 +265,10 @@ theme_bw() +
 theme(legend.position = "none")
 
 iron_ggboxplot
+
+ggsave(
+  filename = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/04_Biodiversity/Richeness.png",
+  plot = iron_ggboxplot, width = 12, height = 8, dpi = 600)
 ```
 
 ```{r}
@@ -256,24 +276,34 @@ alpha_plot_df <- alpha_df %>%
   dplyr::filter(Group == "HC") %>%
   dplyr::mutate(
     Order.q = dplyr::case_when(
-      Diversity == "Species richness"  ~ "0",
-      Diversity == "Shannon diversity" ~ "1",
-      Diversity == "Simpson diversity" ~ "2"
-    )
-  )
+      Diversity == "Species richness"  ~ "Richness",
+      Diversity == "Shannon diversity" ~ "Shannon",
+      Diversity == "Simpson diversity" ~ "Simpson"))
 
-alpha_plot_df %>%
+alpha_diversity <- alpha_plot_df %>%
   ggplot(aes(x = factor(Iron.intake), y = Observed,
-             fill = factor(Iron.intake),
-             color = factor(Iron.intake))) + 
-  facet_wrap(. ~ Order.q, scales = "free_y") + 
-  geom_jitter(width = 0.15) + 
-  geom_boxplot(alpha = 0.5, outlier.shape = NA) + 
-  scale_color_manual(values = c("50" = "#1b9e77", "500" = "#fc8d62")) + 
-  scale_fill_manual(values = c("50" = "#1b9e77", "500" = "#fc8d62")) + 
-  labs(y = "Effective Number of ASVs", x = "Iron Intake") + 
-  theme_bw() + 
-  theme(legend.position = "bottom")
+             fill = factor(Iron.intake), color = factor(Iron.intake))) +
+  facet_wrap(. ~ Order.q, scales = "free_y") +
+  geom_jitter(width = 0.12, size = 3.2, alpha = 0.85) +
+  geom_boxplot(width = 0.58, alpha = 0.35, outlier.shape = NA, linewidth = 0.9) +
+  scale_color_manual(values = c("50" = "#2C7FB8", "500" = "#D95F0E")) +
+  scale_fill_manual(values = c("50" = "#2C7FB8", "500" = "#D95F0E")) +
+  labs(y = "Effective Number of ASVs", x = "Iron Intake (mg/kg diet)") +
+  theme_classic(base_size = 16) +
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        strip.background = element_rect(fill = "grey95", color = "black", linewidth = 0.8),
+        strip.text = element_text(size = 14, face = "bold"),
+        axis.title = element_text(size = 16, face = "bold"),
+        axis.text = element_text(size = 13, color = "black"),
+        axis.line = element_line(linewidth = 0.8, color = "black"),
+        axis.ticks = element_line(linewidth = 0.7, color = "black"),
+        panel.spacing = unit(1.2, "lines"),
+        legend.text = element_text(size = 13))
+
+ggsave(
+  filename = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/04_Biodiversity/Alpha_diversity.png",
+  plot = alpha_diversity, width = 12, height = 8, dpi = 600)
 ```
 
 ###INTERPRETATION 2: If you have categorical data, what can you conclude regarding the role that all ASVs (richess, q = 0) versus common ASVs (Shannon, q = 1) versus dominant ASVs (Simpson, q = 2) have on the biodiversity of your samples as it relates to your variable of interest?

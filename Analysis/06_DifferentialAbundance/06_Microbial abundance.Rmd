@@ -129,6 +129,7 @@ labs(title = "Top 20 ASVs by Iron Intake", x = NULL, y = "Relative abundance") +
 theme_bw() +
 theme(legend.position = "none", strip.text = element_text(face = "bold", size = 9), axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1))
 ```
+
 ```{r Stacked bar graphs}
 # Top 10 phyla
 phylum_df %>%

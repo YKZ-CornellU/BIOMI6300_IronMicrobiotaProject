@@ -19,13 +19,11 @@ knitr::opts_chunk$set(echo = TRUE)
 pacman::p_load(tidyverse, phyloseq, patchwork, vegan,
                install = FALSE)
 
-# Load colors and shapes
-source("/local/workdir/yz3272/Biodiversity_Salinity_16S/code/colors_and_shapes.R")
-source("/local/workdir/yz3272/Biodiversity_Salinity_16S/code/functions.R")
-
 #load data
-load("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/03_Pre-processing/preprocessed_phyloseq.RData")
+load("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Data/03_Preprocessing/preprocessed_phyloseq.RData")
 preprocessed_physeq
+
+source("/local/workdir/yz3272/Biodiversity_Salinity_16S/code/functions.R")
 
 # Intuition check on seq depth
 min(sample_sums(preprocessed_physeq))
@@ -97,8 +95,11 @@ rawSeq_vs_numASV_plot <-
 summary(lm(TotalSeqs ~ num_ASVs, data = raw_TotalSeqsASVs_df))
 
 # Put the two plots together
-rawSeq_histogram + rawSeq_vs_numASV_plot +
+seq_depth <- rawSeq_histogram + rawSeq_vs_numASV_plot +
   plot_annotation(tag_levels = "A")
+
+ggsave("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/05_Ordination/Seq_depth.png",
+       plot = seq_depth, width = 12, height = 8, dpi = 600)
 ```
 ###INTERPRETATION 2:
 The raw sequencing depths for HC_50 and HC_500 samples ranged from 21,000 to 58,000 reads, so read counts were scaled to the minimum sample depth to retain all samples while standardizing library size across groups. This scaling helps to reduce bias from unequal sequencing depth in downstream beta-diversity analyses, however, this way it discards a great portion of reads from deeper samples. Consequently, it may decrease the sensitivity to minor community differences and rare taxa abundance. 
@@ -170,8 +171,11 @@ scaledSeq_vs_numASV_plot <-
   labs(title = "Scaled: Seq Depth vs # ASVs")
 
 # Put the two plots together.
-scaledSeq_histogram + scaledSeq_vs_numASV_plot +
+scaled_seq <- scaledSeq_histogram + scaledSeq_vs_numASV_plot +
   plot_annotation(tag_levels = "A")
+
+ggsave("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/05_Ordination/scaled_seq.png",
+       plot = scaled_seq, width = 12, height = 8, dpi = 600)
 ```
 
 ###INTERPRETATION 3: 
@@ -179,7 +183,7 @@ After scaling, the total number of sequences across all HC samples was brought i
 
 
 ```{r}
-save(scaled_physeq, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/05_Ordination/scaled_physeq.RData")
+save(scaled_physeq, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Data/05_Ordination/scaled_physeq.RData")
 ```
 
 
@@ -197,8 +201,7 @@ str(scaled_bray_dist)
 
 bray_permanova <- adonis2(
   scaled_bray_dist ~ Iron.intake,
-  data = metadata_df
-)
+  data = metadata_df)
 bray_permanova
 
 ### for exploration, run Sorensen to test the persence of major memebers:
@@ -228,15 +231,23 @@ scaled_bray_pcoa <-
          distance = "bray", binary = FALSE)
 
 # Plot it: Bray-Curtis PCoA 
-bray_pcoa_plot <- 
-  plot_ordination(physeq = scaled_physeq,
-                ordination = scaled_bray_pcoa,
-                color = "Iron.intake",
-                title = "Bray-Curtis PCoA") + 
-  geom_point(size = 5, alpha = 0.5, aes(color = Iron.intake)) + 
-  theme_bw() + 
-  theme(legend.position = "right")
+bray_pcoa_plot <- plot_ordination(physeq = scaled_physeq,
+                                  ordination = scaled_bray_pcoa) +
+  geom_point(aes(color = factor(Iron.intake)),
+             size = 4.5, alpha = 0.85) +
+  stat_ellipse(aes(color = factor(Iron.intake)),
+               type = "t", linewidth = 0.9) +
+  scale_color_manual(values = c("HC50" = "#2C7FB8", "HC500" = "#D95F0E"),
+                     labels = c("50 mg/kg", "500 mg/kg"),
+                     name = "Iron intake") +
+  labs(title = "Bray-Curtis PCoA",
+       subtitle = "PERMANOVA p = 0.071",
+       x = "PCoA1",
+       y = "PCoA2") +
+  theme_classic(base_size = 16)
 
+ggsave("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/05_Ordination/Bray_curtis_plot.png",
+       plot = bray_pcoa_plot, width = 12, height = 8, dpi = 600)
 
 # Calculate PCoA with Sorensen dissimilarity
 scaled_sorensen_pcoa <- 
@@ -274,8 +285,8 @@ scaled_bray_nmds <-
   ordinate(
     physeq = scaled_physeq,
     method = "NMDS",
-    distance = "bray"
-  )
+    distance = "bray",
+    binary = "FALSE")
 
 bray_nmds_plot <- 
   plot_ordination(
