@@ -41,5 +41,5 @@ Specifically:
 
 ## Repository Structure (Planned)
 - `Data/` – Small processed R.data files (no raw fastq files)
-- `Analysiss/` – R or Python scripts for processing, analysis, and plotting
+- `Analysiss/` – R or Python scripts for processing, analysis, and plotting. Another README file explains the analytical steps conducts in different analysis rmd files.
 - `Figurs/` – Data visualization figures

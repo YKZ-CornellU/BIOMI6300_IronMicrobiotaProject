@@ -114,6 +114,8 @@ matchPattern(
 )
 
 ```
+
+
 ```{r positive control for forward reads}
 ############ POSITIVE CONTROLS OF CODE TO MAKE SURE IT WORKS ############ 
 all_f_hits <- c()
@@ -234,7 +236,7 @@ postQC_aggregate_plot <-
 postQC_aggregate_plot
 
 # SAVE DATA FIRST 
-  save(filtered_reads, file = "Raw_seq/01_trimmingfiltering/filtered_reads.RData")
+ # save(filtered_reads, file = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Data/01_trimmingfiltering/filtered_reads.RData")
 ```
 # Interpretation of postQC plots: 
 PostQC plots showed that aftertrimming, the quality of both forward and reverse sequencing are sig. improved, with most of them fall above score 37. At this point, I think they are ready for downstream DADA2.
@@ -291,11 +293,20 @@ percSeqs_QC_histplot <-
   scale_x_continuous(limits = c(0, 1))
 
 # Now, let's put the plots together
-numSeqs_QC_dotplot + numRetained_QC_histplot + percSeqs_QC_histplot + 
+PostQC_check <- numSeqs_QC_dotplot + numRetained_QC_histplot + percSeqs_QC_histplot + 
   plot_annotation(tag_levels = 'A')
+
+ggsave(filename = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/00_QC/PostQC_check.png", plot = PostQC_check, width = 12, height = 6, dpi = 600)
 
 # Plot the pre and post together in one plot
 preQC_aggregate_plot / postQC_aggregate_plot
+
+# Save pre/post-QC aggregate plot
+ggsave(filename = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/00_QC/preQC_aggregate_quality_profiles.png", plot = preQC_aggregate_plot, width = 12, height = 6, dpi = 600)
+
+ggsave(filename = "/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/00_QC/postQC_aggregate_quality_profiles.png",
+  plot = postQC_aggregate_plot, width = 12, height = 6, dpi = 600)
+
 ```
 
 # Interpretation of comparison plot: 
@@ -332,6 +343,8 @@ for (r in filtered_reverse_reads) {
 paste("Reverse primer remains in",
       round(mean(all_r_hits) * 100, 2),
       "% of filtered reverse sequences")
+
+## good quality post QC
 ```
 
 ```{r closing up}
