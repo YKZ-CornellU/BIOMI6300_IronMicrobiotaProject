@@ -91,7 +91,7 @@ ggsave("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/06_Microbi
 ###INTERPRETATION 2: Which phyla in your dataset have the highest relative abundances? What are their abundances? We will focus on these phyla for plotting below. :)
 
 
-```{r genera levels}
+```{r genera levels diff}
 genus_df <- 
   scaled_physeq %>%
   tax_glom(taxrank = "Genus") %>%
@@ -124,8 +124,68 @@ genus_df %>%
 
 ggsave("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/06_Microbial abundance/top_genera.png", width = 11, height = 7, dpi = 600)
 ```
+```{r top10 ASVs comparison}
+# Top 10 ASVs boxplot by iron intake
+ASV_df <- 
+  scaled_physeq %>%
+  transform_sample_counts(function(x) x / sum(x)) %>%
+  psmelt() %>%
+  mutate(Iron.intake = factor(Iron.intake,
+                              levels = c(50, 500),
+                              labels = c("HC50", "HC500")))
+
+top10_ASVs <- 
+  ASV_df %>%
+  group_by(OTU) %>%
+  summarize(mean_RelAbund = mean(Abundance), .groups = "drop") %>%
+  arrange(desc(mean_RelAbund)) %>%
+  slice_head(n = 10) %>%
+  pull(OTU)
+
+top_ASVs <- ASV_df %>%
+  filter(OTU %in% top10_ASVs) %>%
+  ggplot(aes(x = Iron.intake, y = Abundance,
+             fill = Iron.intake, color = Iron.intake)) +
+  geom_boxplot(alpha = 0.35, outlier.shape = NA,
+               width = 0.55, linewidth = 0.6) +
+  geom_jitter(width = 0.12, size = 1.8, alpha = 0.75) +
+  facet_wrap(~OTU, scales = "free_y", ncol = 5) +
+  scale_fill_manual(values = iron_colors,
+                    labels = iron_labels,
+                    name = "Iron intake") +
+  scale_color_manual(values = iron_colors,
+                     labels = iron_labels,
+                     name = "Iron intake") +
+  labs(title = "Top 10 ASVs by Iron Intake",
+       x = NULL,
+       y = "Relative abundance") +
+  theme_classic(base_size = 12) +
+  theme(plot.title = element_text(face = "bold", size = 16),
+        strip.background = element_rect(fill = "white", color = "black"),
+        strip.text = element_text(face = "bold", size = 6),
+        axis.text.x = element_text(size = 9),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_text(size = 12),
+        legend.position = "right",
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 11))
+
+ggsave("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/06_Microbial abundance/topASVs.png", width = 11, height = 7, dpi = 600)
+```
+
 
 ```{r Stacked bar graphs}
+# top 10 genera
+genera_relative <- genus_df %>%
+filter(Genus %in% top20_genera) %>%
+ggplot(aes(x = factor(ID), y = Abundance, fill = Genus)) +
+geom_bar(stat = "identity", width = 0.9) +
+facet_grid(~Iron.intake, scales = "free_x", space = "free_x") +
+theme_bw() +
+labs(title = "Top 10 Genera by Individual Sample", x = "Sample ID", y = "Relative abundance") +
+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), strip.text = element_text(face = "bold"))
+
+ggsave("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/06_Microbial abundance/genera_relative.png", width = 11, height = 7, dpi = 600)
 
 # Top 10 phyla
 phyla_relative <- phylum_df %>%
@@ -139,22 +199,10 @@ labs(title = "Top 10 Phyla by Individual Sample", x = "Sample ID", y = "Relative
 theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), strip.text = element_text(face = "bold"))
 
 ggsave("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/06_Microbial abundance/phyla_relative.png", width = 11, height = 7, dpi = 600)
-
-# top 10 genera
-genera_relative <- genus_df %>%
-filter(Genus %in% top20_genera) %>%
-ggplot(aes(x = factor(ID), y = Abundance, fill = Genus)) +
-geom_bar(stat = "identity", width = 0.9) +
-facet_grid(~Iron.intake, scales = "free_x", space = "free_x") +
-theme_bw() +
-labs(title = "Top 10 Genera by Individual Sample", x = "Sample ID", y = "Relative abundance") +
-theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), strip.text = element_text(face = "bold"))
-
-ggsave("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/06_Microbial abundance/genera_relative.png", width = 11, height = 7, dpi = 600)
 ```
 
 
-```{r differential abundance}
+```{r differential abundance for ASVs}
 # Make sure Iron.intake is the testing variable
 sample_data(scaled_physeq)$Iron.intake <- factor(sample_data(scaled_physeq)$Iron.intake)
 sample_data(scaled_physeq)$Iron.intake <- relevel(sample_data(scaled_physeq)$Iron.intake, ref = "50")
