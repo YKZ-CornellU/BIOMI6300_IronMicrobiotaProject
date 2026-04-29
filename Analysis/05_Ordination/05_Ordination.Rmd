@@ -241,9 +241,7 @@ bray_pcoa_plot <- plot_ordination(physeq = scaled_physeq,
                      labels = c("50 mg/kg", "500 mg/kg"),
                      name = "Iron intake") +
   labs(title = "Bray-Curtis PCoA",
-       subtitle = "PERMANOVA p = 0.071",
-       x = "PCoA1",
-       y = "PCoA2") +
+       subtitle = "PERMANOVA p = 0.071") +
   theme_classic(base_size = 16)
 
 ggsave("/local/workdir/yz3272/BIOMI6300_IronMicrobiotaProject/Figures/05_Ordination/Bray_curtis_plot.png",
